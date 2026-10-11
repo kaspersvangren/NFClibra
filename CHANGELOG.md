@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Værktøj til tags: knap til at kopiere materialenummeret; en læst chip udfylder feltet "Programmér chip" (markeret) og antal dele; stort grønt flueben eller rødt kryds ved skrivning, alarm og nulstil.
+- **0.1.51** – Værktøj til tags: knap til at kopiere materialenummeret; en læst chip udfylder feltet "Programmér chip" (markeret) og antal dele; stort grønt flueben eller rødt kryds ved skrivning, alarm og nulstil.
 - **0.1.50** – Kameraet i værktøjet læser kun det, der står inden for rammen (og intet uden for skærmen), og listen følger billedet. Rammen er lidt større.
 - **0.1.49** – App'en hedder nu NFClibra. Menuen åbnes med et tandhjul og er så smal som indholdet. Pinkode-tastaturet: personalets knapper ligger i en bjælke for sig og vender ikke med. Værktøj til tags: antal dele vælges med ét tryk (også flere end 6), og man vælger hele sættet eller kun én del.
 - **0.1.48** – Ikoner ved punkterne i menuen ⋮, og menuen er smallere.
