@@ -203,7 +203,13 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             letterSpacing = 0.04f
         }
         tiles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        feedback = label("", 16f, fg).apply { typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) }
+        // Én linje med fast plads, så knapperne ikke flytter sig, når der kommer en besked
+        feedback = label("", 15f, fg).apply {
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            maxLines = 1
+            minLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
         cardBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply { setColor(card); cornerRadius = dp(16).toFloat() }
@@ -422,35 +428,38 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                     }
                     setPadding(dp(12), dp(2), dp(12), dp(3))
                 }
-                Kind.WARN -> setTextColor(warnFg)
-                else -> setTextColor(fg)
+                Kind.WARN -> { setTextColor(warnFg); setPadding(0, dp(2), 0, dp(3)) }
+                else -> { setTextColor(fg); setPadding(0, dp(2), 0, dp(3)) }
             }
         }
         addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
     }
 
-    private fun fieldsFor(i: Info): List<Field> {
+    /** Altid de samme fire felter i samme rækkefølge, så intet hopper; "–" når der ikke er noget at vise */
+    private fun fieldsFor(i: Info?): List<Field> {
+        if (i == null) return listOf(Field("Del", "–"), Field("Bibliotek", "–"), Field("Alarm", "–"), Field("Chip", "–"))
         val c = i.content
-        val out = ArrayList<Field>()
-        if (c != null && i.danish && !i.blank) {
-            out += if (c.seqNum in 1..c.numItems) Field("Del", "${c.seqNum} af ${c.numItems}")
-            else Field("Del", "uklart (${c.seqNum}/${c.numItems})", Kind.WARN)
-            val own = Hub.configuredLibrary
-            out += when {
-                c.library.isEmpty() -> Field("Bibliotek", "ikke angivet", Kind.WARN)
-                own != null && c.library != own -> Field("Bibliotek", "${c.country}-${c.library}", Kind.WARN)
-                else -> Field("Bibliotek", "${c.country}-${c.library}")
-            }
+        val danish = c != null && i.danish && !i.blank
+        val del = when {
+            !danish -> Field("Del", "–")
+            c!!.seqNum in 1..c.numItems -> Field("Del", "${c.seqNum} af ${c.numItems}")
+            else -> Field("Del", "uklart (${c.seqNum}/${c.numItems})", Kind.WARN)
         }
-        if (!i.danish && !i.blank) out += Field("Format", "ikke dansk", Kind.WARN)
-        out += when (i.afi) {
+        val own = Hub.configuredLibrary
+        val lib = when {
+            i.blank -> Field("Bibliotek", "–")
+            !danish -> Field("Bibliotek", "ikke dansk format", Kind.WARN)
+            c!!.library.isEmpty() -> Field("Bibliotek", "ikke angivet", Kind.WARN)
+            own != null && c.library != own -> Field("Bibliotek", "${c.country}-${c.library}", Kind.WARN)
+            else -> Field("Bibliotek", "${c.country}-${c.library}")
+        }
+        val alarm = when (i.afi) {
             Hub.AFI_ON -> Field("Alarm", "Til", Kind.ALARM_ON)
             Hub.AFI_OFF -> Field("Alarm", "Fra", Kind.ALARM_OFF)
             null -> Field("Alarm", "ukendt", Kind.WARN)
             else -> Field("Alarm", "anden (0x%02X)".format(i.afi), Kind.WARN)
         }
-        out += Field("Chip", i.maker)
-        return out
+        return listOf(del, lib, alarm, Field("Chip", i.maker))
     }
 
     private fun showInfo() {
@@ -458,46 +467,42 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             handler.removeCallbacks(forgetTick)
             val i = info
             tiles.removeAllViews()
-            if (i == null) {
-                cardBox.alpha = 1f
-                stateText.text = "Hold et tag mod telefonen"
-                numberLabel.visibility = View.GONE
-                statusTitle.visibility = View.GONE
-                copyBtn.visibility = View.GONE
-                tagButtons.visibility = View.GONE
-                return@runOnUiThread
-            }
-            val c = i.content
-            val hasNumber = c != null && i.danish && !i.blank
-            numberLabel.visibility = if (hasNumber) View.VISIBLE else View.GONE
-            copyBtn.visibility = if (hasNumber && !c?.barcode.isNullOrEmpty()) View.VISIBLE else View.GONE
-            copyBtn.text = "Kopiér"
-            statusTitle.visibility = View.VISIBLE
+            val c = i?.content
+            val hasNumber = i != null && c != null && i.danish && !i.blank
             statusTitle.text = when {
+                i == null -> "–"
                 i.blank -> "Tom chip"
                 hasNumber -> c!!.barcode.ifEmpty { "(intet nummer)" }
                 else -> "Ukendt indhold"
             }
-            // Felterne to og to
+            // Kopiér beholder sin plads, så nummeret ikke flytter sig
+            copyBtn.visibility = if (hasNumber && !c?.barcode.isNullOrEmpty()) View.VISIBLE else View.INVISIBLE
+            copyBtn.text = "Kopiér"
             val fields = fieldsFor(i)
             for (k in fields.indices step 2) {
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 for (f in fields.subList(k, minOf(k + 2, fields.size))) {
                     r.addView(tile(f), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
                 }
-                if (fields.size - k == 1) r.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
                 tiles.addView(r)
             }
-            if (present) {
-                cardBox.alpha = 1f
-                stateText.text = "Chip ved telefonen"
-                tagButtons.visibility = View.VISIBLE
-            } else {
-                cardBox.alpha = 0.55f
-                tagButtons.visibility = View.GONE
-                forgetTick.run()
+            // Knapperne står der altid; uden chip ved telefonen er de nedtonede og gør ingenting
+            setTagButtonsEnabled(i != null && present)
+            when {
+                i == null -> { cardBox.alpha = 1f; stateText.text = "Hold et tag mod telefonen" }
+                present -> { cardBox.alpha = 1f; stateText.text = "Chip ved telefonen" }
+                else -> { cardBox.alpha = 0.55f; forgetTick.run() }
             }
         }
+    }
+
+    private fun setTagButtonsEnabled(on: Boolean) {
+        tagButtons.alpha = if (on) 1f else 0.35f
+        fun walk(v: View) {
+            v.isEnabled = on
+            if (v is android.view.ViewGroup) for (k in 0 until v.childCount) walk(v.getChildAt(k))
+        }
+        walk(tagButtons)
     }
 
     /** Chippen er fjernet: vis "Sidst læst" med nedtælling, og glem den efter 10 sekunder */
@@ -649,7 +654,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 vibrate(longArrayOf(0, 110, 80, 110))
             } catch (e: Exception) {
                 LogBuf.add("Værktøj: $what fejlede: ${e.message}")
-                say("$what fejlede – hold tagget stille og prøv igen", red)
+                say("$what fejlede – prøv igen", red)
                 flash(false)
                 vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
             }
@@ -773,11 +778,11 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             if (!p.single && p.part < p.total) {
                 p.part++
                 runOnUiThread { part = p.part; updateParts() }
-                say("Del ${p.part - 1} af ${p.total} skrevet ✓ – hold del ${p.part} mod telefonen", green)
+                say("Del ${p.part - 1} af ${p.total} ✓ – hold del ${p.part} mod telefonen", green)
             } else {
                 say(
-                    if (p.single) "Færdig ✓ del ${p.part} af ${p.total} er skrevet, og alarmen er slået til"
-                    else "Færdig ✓ ${p.barcode} er skrevet, og alarmen er slået til",
+                    if (p.single) "Del ${p.part} af ${p.total} skrevet ✓ – alarm til"
+                    else "Skrevet ✓ – alarm til",
                     green,
                 )
                 pending = null
@@ -790,7 +795,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             }
         } catch (e: Exception) {
             LogBuf.add("Værktøj: programmering fejlede: ${e.message}")
-            say("Skrivning fejlede – løft chippen og hold den mod telefonen igen", red)
+            say("Skrivning fejlede – løft chippen og prøv igen", red)
             flash(false)
             vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
         }
@@ -823,7 +828,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             .setPositiveButton("Gem") { _, _ ->
                 val v = field.text.toString().trim()
                 if (v.isEmpty() || v.length > 9 || !v.all { it.isLetterOrDigit() }) {
-                    say("Biblioteksnummeret skal være 1-9 tal/bogstaver", orange)
+                    say("Biblioteksnummer: 1-9 tal eller bogstaver", orange)
                 } else {
                     prefs().edit().putString(Hub.PREF_LIBRARY, v).apply()
                     Hub.configuredLibrary = v
