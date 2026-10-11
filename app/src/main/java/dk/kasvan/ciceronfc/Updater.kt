@@ -22,7 +22,12 @@ import kotlin.concurrent.thread
  */
 object Updater {
     private const val API = "https://api.github.com/repos/kaspersvangren/cicero-nfc/releases/latest"
-    private const val DOWNLOAD_PREFIX = "https://github.com/kaspersvangren/cicero-nfc/releases/download/"
+    // Begge projektnavne godtages, så projektet senere kan omdøbes uden at opdateringen går i stykker
+    private val DOWNLOAD_PREFIXES = listOf(
+        "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
+        "https://github.com/kaspersvangren/nfclibra/releases/download/",
+    )
+    private val APK_NAMES = setOf("CiceroNFC.apk", "NFClibra.apk")
     private const val CHECK_EVERY_MS = 6 * 60 * 60 * 1000L
 
     class Info(val name: String, val url: String, val notes: String)
@@ -70,14 +75,15 @@ object Updater {
                 val assets = j.getJSONArray("assets")
                 for (i in 0 until assets.length()) {
                     val a = assets.getJSONObject(i)
-                    if (a.getString("name") == "CiceroNFC.apk") url = a.getString("browser_download_url")
+                    if (a.getString("name") in APK_NAMES) url = a.getString("browser_download_url")
                 }
-                if (url == null || !url.startsWith(DOWNLOAD_PREFIX)) throw IOException("ingen app-fil i udgivelsen")
+                val u = url
+                if (u == null || DOWNLOAD_PREFIXES.none { u.startsWith(it) }) throw IOException("ingen app-fil i udgivelsen")
                 // Kort ændringsliste fra udgivelsen (uden byggelinjen), højst 600 tegn
                 val notes = j.optString("body", "").lines()
                     .filterNot { it.startsWith("Bygget fra") }
                     .joinToString("\n").trim().take(600)
-                available = if (code > currentCode(app)) Info(tag.removePrefix("v"), url, notes) else null
+                available = if (code > currentCode(app)) Info(tag.removePrefix("v"), u, notes) else null
                 available?.let { LogBuf.add("Ny version fundet: ${it.name}") }
             } catch (e: Exception) {
                 error = e.message ?: "ukendt fejl"

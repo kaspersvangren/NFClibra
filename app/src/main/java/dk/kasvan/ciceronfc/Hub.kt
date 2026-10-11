@@ -311,7 +311,7 @@ object Hub {
             put("ReaderHandle", 0)
             put("Serial", "PHONE")
             put("IntSerial", 0)
-            put("Name", "Telefon-NFC (Cicero NFC)")
+            put("Name", "Telefon-NFC (NFClibra)")
             put("Family", "Android NFC")
             for ((k, v) in counters) put(k, v)
         }

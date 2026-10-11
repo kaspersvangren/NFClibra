@@ -1,6 +1,8 @@
-# Cicero NFC
+# NFClibra
 
-Android-app, der gør telefonens NFC til RFID-læser i Cicero Mobile.
+Android-app, der gør telefonens NFC til RFID-læser i Cicero Mobile. (Hed tidligere Cicero NFC.)
+
+NFClibra er ikke lavet af eller godkendt af Systematic. Cicero er Systematics produkt.
 
 App'en viser Cicero Mobile i Androids indbyggede webvisning (samme motor som Chrome)
 og kører ved siden af en lille lokal RFID-server på `localhost:1667`. Serveren taler
@@ -38,7 +40,7 @@ Hold bogen mod bagsiden af telefonen:
 | Grå pille, flueben | læst på en side uden alarmskift | – |
 | Rød pille "RFID-fejl" | Hostname og/eller Port i Ciceros RFID-opsætning er forkert (fx et mellemrum); tryk for vejledning | – |
 
-## Værktøj til tags (menuen ⋮)
+## Værktøj til tags (knappen nederst i menuen ⚙)
 
 Mens værktøjet er åbent, får Cicero ikke besked om tags.
 
@@ -57,7 +59,7 @@ Mens værktøjet er åbent, får Cicero ikke besked om tags.
 - Kontakten "Pinkode" ved "Send kvittering" i udlånsbilledet.
 - Knaprækken Nulstil/Søg under søgeformularer ligger altid nederst som en lille pille over bundmenuen. Pillen er en kopi; et tryk på den trykker på Ciceros egen knap.
 
-App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Alle tre slås til og fra på én gang i menuen ⋮ → Indstillinger → Tilpasninger af Cicero (fx før en fejl meldes til Systematic).
+App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Alle tre slås til og fra på én gang i menuen ⚙ → Indstillinger → Tilpasninger af Cicero (fx før en fejl meldes til Systematic).
 
 ## Data og sikkerhed
 

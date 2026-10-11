@@ -63,6 +63,12 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
         gravity = Gravity.CENTER_HORIZONTAL
         setPadding(dp(16), dp(12), dp(16), dp(12))
     }
+    // Personalets knapper ligger for sig i bunden og vender ikke med, når tastaturet vendes mod låneren
+    private val staffBar = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(dp(8), dp(4), dp(8), dp(4))
+    }
+    private val staffBg = GradientDrawable().apply { cornerRadius = dp(14).toFloat() }
     val view = FrameLayout(ctx).apply {
         visibility = View.GONE
         isClickable = true // tryk må ikke gå igennem til Cicero
@@ -92,8 +98,9 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
             }
             box.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
-        // Til personalet: små knapper nederst, delt ligeligt i bredden
-        val bottom = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        // Til personalet: små knapper i deres egen bjælke nederst, delt ligeligt i bredden
+        val bottom = staffBar
+        bottom.background = staffBg
         for ((label, action) in listOf<Pair<String, () -> Unit>>(
             "Annuller" to { hide(); onCancel?.invoke() },
             "Tastatur" to { hide(); onKeyboard?.invoke() },
@@ -113,10 +120,17 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
             smallButtons += b
             bottom.addView(b, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
-        box.addView(bottom, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(8)
-        })
-        view.addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        val column = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(View(ctx), LinearLayout.LayoutParams(0, 0, 1f))
+            addView(box, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(View(ctx), LinearLayout.LayoutParams(0, 0, 1f))
+            addView(bottom, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(12), dp(16), dp(12), dp(12))
+            })
+        }
+        view.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         style()
     }
 
@@ -168,7 +182,7 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
         val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         // Fylder bredden på små telefoner; i normal størrelse bliver den ikke kæmpestor på store
         val w = if (big) ctx.resources.displayMetrics.widthPixels else minOf(ctx.resources.displayMetrics.widthPixels, dp(420))
-        box.layoutParams = (box.layoutParams as FrameLayout.LayoutParams).apply { width = w }
+        box.layoutParams = (box.layoutParams as LinearLayout.LayoutParams).apply { width = w; gravity = Gravity.CENTER_HORIZONTAL }
 
         // Store taster, men aldrig højere end at alt kan være på skærmen
         val dm = ctx.resources.displayMetrics
@@ -196,9 +210,16 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
             it.setTextColor(if (big) Color.WHITE else cSub)
             it.textSize = if (big) 17f else 15f
         }
+        // Bjælken skiller sig ud fra tastaturet: lidt mørkere end baggrunden (stor: mørkegrå på sort)
+        staffBg.setColor(if (big) Color.parseColor("#262626") else darker(cBg))
         bigButton.text = if (big) "Normal" else "Stor"
         box.requestLayout()
         update()
+    }
+
+    private fun darker(c: Int): Int {
+        val f = 0.88f
+        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
     }
 
     private fun update() {

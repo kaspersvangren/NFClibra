@@ -106,7 +106,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var pillIcon: ImageView
     private lateinit var pillText: TextView
     private lateinit var detail: TextView
-    private lateinit var menuBtn: TextView
+    private lateinit var menuBtn: ImageView
     private lateinit var updateBtn: TextView
     private lateinit var updateBg: GradientDrawable
     private var updateAfterPermission = false
@@ -185,7 +185,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun logStartup() {
         val date = java.text.SimpleDateFormat("d. MMM yyyy", java.util.Locale("da")).format(java.util.Date())
         LogBuf.add(
-            "Cicero NFC ${BuildConfigInfo.version(this)} startet $date · Android ${Build.VERSION.RELEASE} " +
+            "NFClibra ${BuildConfigInfo.version(this)} startet $date · Android ${Build.VERSION.RELEASE} " +
                 "(SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}",
         )
         val wv = try {
@@ -275,15 +275,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         bar.addView(updateBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) })
 
-        menuBtn = TextView(this).apply {
-            text = "⋮"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(12), 0)
+        // Tandhjul i stedet for ⋮: tydeligere og nemmere at ramme, men ikke højere end bjælken
+        menuBtn = ImageView(this).apply {
+            setImageResource(R.drawable.ic_menu_settings)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(10), dp(4), dp(12), dp(4))
             contentDescription = "Menu"
+            val ripple = android.util.TypedValue().also {
+                theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, it, true)
+            }.resourceId
+            setBackgroundResource(ripple)
             setOnClickListener { showMenu(it) }
         }
-        bar.addView(menuBtn)
+        bar.addView(menuBtn, LinearLayout.LayoutParams(dp(48), dp(32)))
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -345,7 +349,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun buildLockView(): LinearLayout {
         lockIcon = ImageView(this).apply { setImageResource(R.drawable.ic_lock) }
         lockTitle = TextView(this).apply {
-            text = "Cicero NFC er låst"
+            text = "NFClibra er låst"
             textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.CENTER
@@ -353,7 +357,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         lockHint = TextView(this).apply {
             // Versionen står her, så den er nem at finde, når man skal have hjælp
-            text = "Tryk for at låse op\n\nCicero NFC ${BuildConfigInfo.version(this@MainActivity)}"
+            text = "Tryk for at låse op\n\nNFClibra ${BuildConfigInfo.version(this@MainActivity)}"
             textSize = 14f
             gravity = Gravity.CENTER
         }
@@ -374,7 +378,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun warnNoScreenLock() {
         AlertDialog.Builder(this)
             .setTitle("Ingen skærmlås")
-            .setMessage("Telefonen har ingen skærmlås (fingeraftryk eller pinkode), så Cicero NFC kan ikke låse sig selv. Slå skærmlås til i telefonens indstillinger.")
+            .setMessage("Telefonen har ingen skærmlås (fingeraftryk eller pinkode), så NFClibra kan ikke låse sig selv. Slå skærmlås til i telefonens indstillinger.")
             .setPositiveButton("Indstillinger") { _, _ -> startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }
             .setNegativeButton("OK", null)
             .track()
@@ -520,7 +524,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (news.isEmpty()) return
         val msg = if (news.size == 1) news[0].text else news.joinToString("\n\n") { "${it.name}: ${it.text}" }
         AlertDialog.Builder(this)
-            .setTitle("Nyt i Cicero NFC ${BuildConfigInfo.version(this)}")
+            .setTitle("Nyt i NFClibra ${BuildConfigInfo.version(this)}")
             .setMessage(msg)
             .setPositiveButton("OK", null)
             .setNeutralButton("Alle ændringer") { _, _ -> showChangelog() }
@@ -550,7 +554,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         authInProgress = true
         if (Build.VERSION.SDK_INT >= 30) {
             val prompt = BiometricPrompt.Builder(this)
-                .setTitle("Lås Cicero NFC op")
+                .setTitle("Lås NFClibra op")
                 .setAllowedAuthenticators(
                     BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
                 )
@@ -575,7 +579,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             )
         } else {
             @Suppress("DEPRECATION")
-            val i = getSystemService(KeyguardManager::class.java)?.createConfirmDeviceCredentialIntent("Lås Cicero NFC op", null)
+            val i = getSystemService(KeyguardManager::class.java)?.createConfirmDeviceCredentialIntent("Lås NFClibra op", null)
             if (i == null) {
                 authEnded()
                 unlock()
@@ -736,6 +740,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 text = label
                 textSize = 15f
                 setTextColor(pal.text)
+                maxLines = 1
                 setCompoundDrawablesRelative(icon(iconRes, pal.sub), null, null, null)
                 compoundDrawablePadding = dp(14)
                 gravity = Gravity.CENTER_VERTICAL
@@ -751,7 +756,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         item("Indstillinger", R.drawable.ic_menu_settings) { showSettings() }
         item("Søg efter opdatering", R.drawable.ic_menu_update) { checkForUpdateNow() }
         item("Ændringer", R.drawable.ic_menu_changes) { showChangelog() }
-        item("Om Cicero NFC", R.drawable.ic_menu_info) { showAbout() }
+        item("Om NFClibra", R.drawable.ic_menu_info) { showAbout() }
         col.addView(View(this).apply { setBackgroundColor(pal.line) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply { topMargin = dp(6); bottomMargin = dp(10) })
         col.addView(TextView(this).apply {
@@ -775,6 +780,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             marginStart = dp(12); marginEnd = dp(12)
         })
+        // Præcis så bred som det længste punkt
+        col.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        win.width = col.measuredWidth
         openMenu = win
         win.showAsDropDown(anchor, 0, 0, Gravity.END)
     }
@@ -824,9 +832,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun showAbout() {
         AlertDialog.Builder(this)
-            .setTitle("Cicero NFC ${BuildConfigInfo.version(this)}")
+            .setTitle("NFClibra ${BuildConfigInfo.version(this)}")
             .setMessage(
                 "Bruger telefonens NFC som RFID-læser i Cicero Mobile.\n\n" +
+                    "NFClibra er ikke lavet af eller godkendt af Systematic. Cicero er Systematics produkt.\n\n" +
                     "Designet og testet af Kasper Svangren, Gladsaxe Bibliotekerne. Kodet med AI-assistance (Claude).\n\n" +
                     "Tak til Deichman bibliotek i Oslo for go-feig (MIT-licens), hvis protokol Cicero taler med RFID-læseren. " +
                     "Der er ikke kopieret kode.",
@@ -840,7 +849,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         AlertDialog.Builder(this)
             .setTitle("Open source-licenser")
             .setMessage(
-                "Cicero NFC indeholder:\n\n" +
+                "NFClibra indeholder:\n\n" +
                     "Kotlin Standard Library\n" +
                     "Copyright JetBrains s.r.o. and Kotlin Programming Language contributors\n" +
                     "Apache License 2.0\n\n" +
@@ -1281,7 +1290,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
         bar.setBackgroundColor(pal.bar)
         setSystemBar(pal.bar, light = pal.lightBar)
-        menuBtn.setTextColor(pal.sub)
+        menuBtn.imageTintList = ColorStateList.valueOf(pal.text)
 
         val upd = Updater.available
         val prog = Updater.progress
@@ -1383,7 +1392,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             AlertDialog.Builder(this)
                 .setTitle("Tillad opdateringer")
                 .setMessage(
-                    "For at kunne opdatere sig selv skal Cicero NFC have lov til at installere apps. " +
+                    "For at kunne opdatere sig selv skal NFClibra have lov til at installere apps. " +
                         "Det skal kun gøres én gang.\n\nSlå \"Tillad fra denne kilde\" til og tryk tilbage.",
                 )
                 .setPositiveButton("Giv lov") { _, _ ->
@@ -1452,7 +1461,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun shareLog() {
         val i = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Cicero NFC log")
+            putExtra(Intent.EXTRA_SUBJECT, "NFClibra log")
             putExtra(Intent.EXTRA_TEXT, LogBuf.text())
         }
         startActivity(Intent.createChooser(i, "Del log"))

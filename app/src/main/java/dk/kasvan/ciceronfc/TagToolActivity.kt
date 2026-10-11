@@ -49,7 +49,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         val danish: Boolean,
     )
 
-    private class Pending(val barcode: String, var part: Int, val total: Int)
+    private class Pending(val barcode: String, var part: Int, val total: Int, val single: Boolean)
 
     // Farver som Cicero (lys/mørk) – fælles med kameraet
     private var dark = true
@@ -93,12 +93,15 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private lateinit var feedback: TextView
     private lateinit var input: EditText
     private lateinit var abcBtn: TextView
-    private lateinit var partText: TextView
-    private lateinit var totalText: TextView
+    private lateinit var totalRow: LinearLayout
+    private lateinit var modeRow: LinearLayout
+    private lateinit var partBox: LinearLayout
+    private lateinit var partRow: LinearLayout
     private lateinit var writeBtn: TextView
     private lateinit var cancelBtn: TextView
     private var part = 1
     private var total = 1
+    private var single = false // "Kun én del" i stedet for hele sættet
 
     private val scan = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         r.data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let {
@@ -253,30 +256,20 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             addView(camBtn, LinearLayout.LayoutParams(dp(96), LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
         })
 
-        // Del x af y – sæt programmeres én chip ad gangen
-        partText = label("", 22f, fg).apply { gravity = Gravity.CENTER; minWidth = dp(36) }
-        totalText = label("", 22f, fg).apply { gravity = Gravity.CENTER; minWidth = dp(36) }
-        fun step(label: String, f: () -> Unit) = TextView(this).apply {
-            text = label
-            textSize = 24f
-            gravity = Gravity.CENTER
-            setTextColor(fg)
-            background = GradientDrawable().apply { setColor(keyBg); cornerRadius = dp(10).toFloat() }
-            setOnClickListener { if (pending == null) { f(); updateParts() } }
+        // Antal dele og hele sættet / kun én del – ét tryk, ingen tællen op og ned
+        fun rowBox() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        col.addView(label("Antal dele").apply { setPadding(dp(4), dp(14), 0, dp(4)) })
+        totalRow = rowBox()
+        col.addView(totalRow)
+        modeRow = rowBox()
+        col.addView(modeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        partRow = rowBox()
+        partBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(label("Hvilken del mangler?").apply { setPadding(dp(4), dp(10), 0, dp(4)) })
+            addView(partRow)
         }
-        col.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, dp(4))
-            addView(label("Del ", 18f, fg))
-            addView(step("−") { if (part > 1) part-- }, LinearLayout.LayoutParams(dp(44), dp(44)))
-            addView(partText)
-            addView(step("+") { if (part < total) part++ }, LinearLayout.LayoutParams(dp(44), dp(44)))
-            addView(label("  af ", 18f, fg))
-            addView(step("−") { if (total > 1) { total--; if (part > total) part = total } }, LinearLayout.LayoutParams(dp(44), dp(44)))
-            addView(totalText)
-            addView(step("+") { if (total < 9) total++ }, LinearLayout.LayoutParams(dp(44), dp(44)))
-        })
+        col.addView(partBox)
         updateParts()
 
         writeBtn = button("Programmér chip", blue) { arm() }
@@ -303,9 +296,58 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /** Rund knap med et tal (eller "Flere…"); den valgte er blå */
+    private fun chip(text: String, selected: Boolean, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 17f
+        gravity = Gravity.CENTER
+        maxLines = 1
+        setTextColor(if (selected) Color.WHITE else fg)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        background = GradientDrawable().apply { setColor(if (selected) blue else keyBg); cornerRadius = dp(22).toFloat() }
+        setPadding(dp(2), dp(10), dp(2), dp(10))
+        setOnClickListener { if (pending == null) { onClick(); updateParts() } }
+    }
+
+    private fun addChip(row: LinearLayout, v: View, weight: Float = 1f) =
+        row.addView(v, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, weight).apply { setMargins(dp(3), 0, dp(3), 0) })
+
+    /** Tallene 1-6 og "Flere…" til større tal (op til [max]) */
+    private fun numberRow(row: LinearLayout, value: Int, max: Int, title: String, set: (Int) -> Unit) {
+        row.removeAllViews()
+        for (n in 1..minOf(6, max)) addChip(row, chip("$n", value == n) { set(n) })
+        if (max > 6) {
+            addChip(row, chip(if (value > 6) "$value" else "Flere…", value > 6) { askNumber(title, 7, max, value) { set(it); updateParts() } }, 1.8f)
+        }
+    }
+
+    private fun askNumber(title: String, min: Int, max: Int, current: Int, set: (Int) -> Unit) {
+        val picker = android.widget.NumberPicker(this).apply {
+            minValue = min
+            maxValue = max
+            value = current.coerceIn(min, max)
+            wrapSelectorWheel = false
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(picker)
+            .setPositiveButton("OK") { _, _ -> set(picker.value) }
+            .setNegativeButton("Annuller", null)
+            .show()
+    }
+
     private fun updateParts() {
-        partText.text = "$part"
-        totalText.text = "$total"
+        numberRow(totalRow, total, 99, "Antal dele") { n ->
+            total = n
+            if (part > total) part = 1
+            if (total == 1) single = false
+        }
+        modeRow.removeAllViews()
+        modeRow.visibility = if (total > 1) View.VISIBLE else View.GONE
+        addChip(modeRow, chip("Hele sættet", !single) { single = false; part = 1 })
+        addChip(modeRow, chip("Kun én del…", single) { single = true })
+        partBox.visibility = if (single && total > 1) View.VISIBLE else View.GONE
+        numberRow(partRow, part, total, "Hvilken del?") { part = it }
     }
 
     private fun updateLibraryText() {
@@ -567,7 +609,8 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             askLibrary { arm() }
             return
         }
-        val p = Pending(barcode, part, total)
+        if (!single) part = 1
+        val p = Pending(barcode, part, total, single && total > 1)
         exec.execute {
             pending = p
             lastWrittenMac = null
@@ -631,12 +674,16 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             showInfo()
             LogBuf.add("Værktøj: programmeret ${p.barcode} del ${p.part}/${p.total}")
             vibrate(longArrayOf(0, 110, 80, 110))
-            if (p.part < p.total) {
+            if (!p.single && p.part < p.total) {
                 p.part++
                 runOnUiThread { part = p.part; updateParts() }
                 say("Del ${p.part - 1} af ${p.total} skrevet ✓ – hold del ${p.part} mod telefonen", green)
             } else {
-                say("Færdig ✓ ${p.barcode} er skrevet, og alarmen er slået til", green)
+                say(
+                    if (p.single) "Færdig ✓ del ${p.part} af ${p.total} er skrevet, og alarmen er slået til"
+                    else "Færdig ✓ ${p.barcode} er skrevet, og alarmen er slået til",
+                    green,
+                )
                 pending = null
                 runOnUiThread {
                     writeBtn.visibility = View.VISIBLE
