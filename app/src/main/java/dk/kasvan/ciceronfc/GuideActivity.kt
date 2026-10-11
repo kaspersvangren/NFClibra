@@ -1,6 +1,7 @@
 package dk.kasvan.ciceronfc
 
 import android.animation.ValueAnimator
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -135,7 +136,7 @@ class GuideActivity : ComponentActivity() {
         index = i
         val p = pages[i]
         stage.removeAllViews()
-        stage.addView(p.build(), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        stage.addView(FitBox(this, dp(12)).apply { addView(p.build()) }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         stage.alpha = 0f
         stage.animate().alpha(1f).setDuration(200).start()
         titleView.text = p.title
@@ -175,6 +176,72 @@ class GuideActivity : ComponentActivity() {
     }
 
     // ---------- Byggeklodser til tegningerne ----------
+
+    /**
+     * Holder én tegning: den får sin egen størrelse (eller den, den har bedt om), centreres,
+     * og gøres mindre, hvis den ikke kan være der – så intet skæres af eller klemmes.
+     */
+    private class FitBox(ctx: Context, private val margin: Int) : FrameLayout(ctx) {
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val w = MeasureSpec.getSize(widthSpec)
+            val h = MeasureSpec.getSize(heightSpec)
+            getChildAt(0)?.let { c ->
+                val lp = c.layoutParams
+                c.measure(
+                    if (lp.width > 0) MeasureSpec.makeMeasureSpec(lp.width, MeasureSpec.EXACTLY) else MeasureSpec.makeMeasureSpec(w, MeasureSpec.AT_MOST),
+                    if (lp.height > 0) MeasureSpec.makeMeasureSpec(lp.height, MeasureSpec.EXACTLY) else MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                )
+            }
+            setMeasuredDimension(w, h)
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            val c = getChildAt(0) ?: return
+            val cw = c.measuredWidth
+            val ch = c.measuredHeight
+            val x = (width - cw) / 2
+            val y = (height - ch) / 2
+            c.layout(x, y, x + cw, y + ch)
+            val s = minOf(1f, (height - margin).toFloat() / ch.coerceAtLeast(1), width.toFloat() / cw.coerceAtLeast(1))
+            c.pivotX = cw / 2f
+            c.pivotY = ch / 2f
+            c.scaleX = s
+            c.scaleY = s
+        }
+    }
+
+    /** En rullebar visning, der kun rulles af guiden selv (fingeren bladrer stadig mellem siderne) */
+    private fun stillScroll(horizontal: Boolean): FrameLayout {
+        val v: FrameLayout = if (horizontal) object : android.widget.HorizontalScrollView(this) {
+            override fun onInterceptTouchEvent(ev: MotionEvent) = false
+            override fun onTouchEvent(ev: MotionEvent) = false
+        } else object : android.widget.ScrollView(this) {
+            override fun onInterceptTouchEvent(ev: MotionEvent) = false
+            override fun onTouchEvent(ev: MotionEvent) = false
+        }
+        v.isVerticalScrollBarEnabled = false
+        v.isHorizontalScrollBarEnabled = false
+        v.overScrollMode = View.OVER_SCROLL_NEVER
+        return v
+    }
+
+    /** Rul [v] blødt til [to] (vandret eller lodret) */
+    private fun glide(v: View, horizontal: Boolean, to: Int, ms: Long) {
+        val from = if (horizontal) v.scrollX else v.scrollY
+        animators += ValueAnimator.ofInt(from, to).apply {
+            duration = ms
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener { val p = it.animatedValue as Int; if (horizontal) v.scrollTo(p, 0) else v.scrollTo(0, p) }
+            start()
+        }
+    }
+
+    /** Et kort tryk på en knap */
+    private fun press(v: View) {
+        v.animate().scaleX(0.9f).scaleY(0.9f).setStartDelay(0).setDuration(90).withEndAction {
+            v.animate().scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(140).start()
+        }.start()
+    }
 
     private fun rounded(color: Int, r: Int, stroke: Int? = null) = GradientDrawable().apply {
         setColor(color); cornerRadius = dp(r).toFloat()
@@ -325,50 +392,172 @@ class GuideActivity : ComponentActivity() {
             "Værktøj til tags",
             "Den blå knap nederst i menuen. Se hvad der står på en chip, slå alarmen til eller fra, nulstil den, eller programmér en ny – materialenummeret kan læses med kameraet, både som stregkode og som tal.",
         ) {
+            val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+            val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
             fun tile(l: String, v: View) = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = rounded(tc.tile, 8)
-                setPadding(dp(8), dp(6), dp(8), dp(6))
+                setPadding(dp(8), dp(5), dp(8), dp(6))
                 addView(text(l, 11f, tc.sub))
                 addView(v)
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             }
-            val alarm = text("Til", 13f, Color.WHITE, true).apply { background = rounded(tc.orange, 12); setPadding(dp(8), dp(1), dp(8), dp(2)) }
-            val c = card(
-                text("Chip ved telefonen", 12f, tc.sub),
-                text("5123456789", 22f, tc.fg, true).apply { typeface = Typeface.create("monospace", Typeface.BOLD) },
-                hrow(tile("Del", text("1 af 1", 14f)), tile("Alarm", alarm), gap = 6).apply {
-                    setPadding(0, dp(6), 0, 0)
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                },
-                hrow(
-                    text("Alarm til", 13f, Color.WHITE, true).apply { gravity = Gravity.CENTER; background = rounded(tc.orange, 10); setPadding(dp(10), dp(8), dp(10), dp(8)) },
-                    text("Alarm fra", 13f, Color.WHITE, true).apply { gravity = Gravity.CENTER; background = rounded(tc.green, 10); setPadding(dp(10), dp(8), dp(10), dp(8)) },
-                    text("Nulstil", 13f, tc.red, true).apply { gravity = Gravity.CENTER; background = rounded(tc.key, 10); setPadding(dp(10), dp(8), dp(10), dp(8)) },
-                    gap = 6,
-                ).apply { setPadding(0, dp(10), 0, 0) },
-            ).apply { layoutParams = FrameLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT) }
+            fun row(vararg c: View, top: Int = 6) = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                c.forEachIndexed { k, v ->
+                    if (k > 0) (v.layoutParams as LinearLayout.LayoutParams).marginStart = dp(6)
+                    addView(v)
+                }
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(top) }
+            }
+            fun btn(t: String, bg: Int, fg: Int, weight: Boolean = true) = text(t, 12f, fg, true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(bg, 10)
+                setPadding(dp(10), dp(7), dp(10), dp(7))
+                layoutParams = if (weight) LinearLayout.LayoutParams(0, WRAP, 1f) else wrap()
+            }
+            fun cardBox(vararg c: View) = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(tc.card, 12)
+                setPadding(dp(10), dp(8), dp(10), dp(10))
+                for (v in c) addView(v)
+            }
+
+            val libRow = row(
+                text("Bibliotek: DK-715900", 12f, tc.sub).apply { layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) },
+                text("Ret", 12f, tc.blue, true),
+                top = 0,
+            ).apply { setPadding(dp(2), 0, dp(2), dp(6)) }
+
+            val state = text("", 12f, tc.sub)
+            val number = text("", 20f, tc.fg, true).apply {
+                typeface = Typeface.create("monospace", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            }
+            val copy = text("Kopiér", 12f, tc.blue, true)
+            val vDel = text("", 13f)
+            val vLib = text("", 13f)
+            val vAlarm = text("", 13f)
+            val vChip = text("", 13f)
+            val chipCard = cardBox(
+                state,
+                text("Materialenummer", 11f, tc.sub).apply { setPadding(0, dp(2), 0, 0) },
+                row(number, copy, top = 0),
+                row(tile("Del", vDel), tile("Bibliotek", vLib)),
+                row(tile("Alarm", vAlarm), tile("Chip", vChip)),
+            )
             val check = FrameLayout(this).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.green) }
-                addView(icon(R.drawable.ic_check, Color.WHITE, 32), FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER))
+                addView(icon(R.drawable.ic_check, Color.WHITE, 30), FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER))
                 alpha = 0f
             }
-            val box = FrameLayout(this).apply {
-                addView(c)
-                // Fluebenet står i hjørnet, så det ikke dækker nummeret
-                addView(check, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
+            val chipBox = FrameLayout(this).apply {
+                addView(chipCard)
+                addView(check, FrameLayout.LayoutParams(dp(50), dp(50), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(8), dp(8), 0) })
             }
-            loop(2600) { n ->
-                // Skiftevis: alarmen slås fra (grønt flueben), og til igen
-                val on = n % 2 == 1
-                alarm.text = if (on) "Til" else "Fra"
-                alarm.background = rounded(if (on) tc.orange else tc.green, 12)
-                check.scaleX = 0.7f; check.scaleY = 0.7f
-                check.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).withEndAction {
-                    check.animate().alpha(0f).setStartDelay(600).setDuration(350).start()
-                }.start()
+
+            val bOn = btn("Alarm til", tc.orange, Color.WHITE)
+            val bOff = btn("Alarm fra", tc.green, Color.WHITE)
+            val bReset = btn("Nulstil", tc.key, tc.red)
+            val buttons = row(bOn, bOff, bReset, top = 10)
+
+            val input = text("", 12f, tc.sub).apply {
+                setPadding(dp(8), dp(7), dp(8), dp(7))
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             }
-            box
+            val cam = btn("Kamera", tc.blue, Color.WHITE, weight = false)
+            val parts = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                for (k in 1..6) addView(text("$k", 12f, if (k == 1) Color.WHITE else tc.fg, true).apply {
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (k == 1) tc.blue else tc.key) }
+                }, LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(5) })
+                addView(text("Flere…", 12f, tc.fg, true).apply {
+                    gravity = Gravity.CENTER
+                    background = rounded(tc.key, 13)
+                    setPadding(dp(10), 0, dp(10), 0)
+                }, LinearLayout.LayoutParams(WRAP, dp(26)))
+            }
+            val progCard = cardBox(
+                text("Programmér ny chip", 12f, tc.sub),
+                row(input, btn("ABC", tc.key, tc.fg, weight = false), cam),
+                text("Antal dele", 11f, tc.sub).apply { setPadding(0, dp(8), 0, dp(4)) },
+                parts,
+                text("Programmér chip", 13f, Color.WHITE, true).apply {
+                    gravity = Gravity.CENTER
+                    background = rounded(tc.blue, 14)
+                    setPadding(0, dp(7), 0, dp(7))
+                    layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) }
+                },
+            ).apply { layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) } }
+
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(libRow)
+                addView(chipBox)
+                addView(buttons)
+                addView(progCard)
+                layoutParams = FrameLayout.LayoutParams(dp(300), WRAP)
+            }
+
+            fun setInput(t: String?, picked: Boolean = false) {
+                input.text = t ?: "Materialenummer"
+                input.setTextColor(if (t == null) tc.sub else tc.fg)
+                input.background = rounded(if (picked) Color.argb(60, Color.red(tc.blue), Color.green(tc.blue), Color.blue(tc.blue)) else tc.card, 8, if (picked) tc.blue else tc.sub)
+            }
+            fun setAlarm(on: Boolean?) {
+                vAlarm.text = when (on) { null -> "–"; true -> "Til"; false -> "Fra" }
+                if (on == null) {
+                    vAlarm.background = null
+                    vAlarm.setTextColor(tc.fg)
+                    vAlarm.setPadding(0, 0, 0, 0)
+                } else {
+                    vAlarm.background = rounded(if (on) tc.orange else tc.green, 10)
+                    vAlarm.setTextColor(Color.WHITE)
+                    vAlarm.setPadding(dp(8), 0, dp(8), dp(1))
+                }
+            }
+            fun empty() {
+                state.text = "Hold et tag mod telefonen"
+                number.text = "–"
+                copy.visibility = View.INVISIBLE
+                vDel.text = "–"; vLib.text = "–"; vChip.text = "–"
+                setAlarm(null)
+                buttons.alpha = 0.4f
+                setInput(null)
+            }
+            empty()
+            loop(1500) { n ->
+                when (n % 6) {
+                    0 -> empty()
+                    1 -> {
+                        // En chip læses: felterne udfyldes, og nummeret står klar i programmeringsfeltet
+                        state.text = "Chip ved telefonen"
+                        number.text = "5123456789"
+                        copy.visibility = View.VISIBLE
+                        vDel.text = "1 af 1"; vLib.text = "DK-715900"; vChip.text = "NXP"
+                        setAlarm(true)
+                        buttons.alpha = 1f
+                        setInput("5123456789", picked = true)
+                    }
+                    2 -> {
+                        press(bOff)
+                        setAlarm(false)
+                        check.scaleX = 0.7f; check.scaleY = 0.7f
+                        check.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(150).setDuration(150).withEndAction {
+                            check.animate().alpha(0f).setStartDelay(700).setDuration(300).start()
+                        }.start()
+                    }
+                    4 -> {
+                        // Kameraet læser et nyt nummer
+                        press(cam)
+                        setInput(null)
+                        handler.postDelayed({ if (input.isAttachedToWindow) setInput("5198765432") }, 700)
+                    }
+                }
+            }
+            col
         },
         Page(
             "Pinkode ved udlån",
@@ -434,77 +623,144 @@ class GuideActivity : ComponentActivity() {
             "Faner kan swipes",
             "Fanerækken øverst i Cicero kan swipes. I stedet for at trykke på pilene skubber du bare fanerne til siden med fingeren.",
         ) {
-            val tabs = hrow(
-                text("LÅNERE", 13f, tc.blue, true), text("MELLEMVÆRENDE", 13f, tc.fg, true),
-                text("BESKEDER", 13f, tc.fg, true), text("MEDLEMSKAB", 13f, tc.fg, true), gap = 22,
-            ).apply { setPadding(dp(12), 0, dp(12), 0) }
+            val strip = stillScroll(horizontal = true)
+            val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            listOf("LÅNERE", "MELLEMVÆRENDE", "BESKEDER", "MEDLEMSKAB").forEachIndexed { k, t ->
+                tabs.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(dp(16), dp(12), dp(16), 0)
+                    addView(text(t, 13f, if (k == 0) tc.blue else tc.sub, true))
+                    addView(View(this@GuideActivity).apply { setBackgroundColor(if (k == 0) tc.blue else Color.TRANSPARENT) },
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2)).apply { topMargin = dp(10) })
+                })
+            }
+            strip.addView(tabs)
+            fun line(w: Int) = View(this).apply {
+                background = rounded(tc.tile, 6)
+                layoutParams = LinearLayout.LayoutParams(dp(w), dp(14)).apply { topMargin = dp(10) }
+            }
+            val screen = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(tc.card, 12)
+                clipToOutline = true
+                addView(strip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(View(this@GuideActivity).apply { setBackgroundColor(tc.key) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+                addView(LinearLayout(this@GuideActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(4), dp(16), dp(16))
+                    addView(line(200)); addView(line(150)); addView(line(230)); addView(line(120))
+                })
+            }
             val finger = View(this).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.fg) }
                 alpha = 0f
             }
-            val strip = FrameLayout(this).apply {
-                clipChildren = true
-                background = rounded(tc.card, 12)
-                addView(tabs, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
-                addView(finger, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = dp(30) })
-                layoutParams = FrameLayout.LayoutParams(dp(280), dp(52))
+            val box = FrameLayout(this).apply {
+                addView(screen)
+                addView(finger, FrameLayout.LayoutParams(dp(34), dp(34)).apply { leftMargin = dp(200); topMargin = dp(8) })
+                layoutParams = FrameLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT)
             }
-            loop(2400) { n ->
-                val left = n % 2 == 0
+            val dist = dp(160)
+            loop(2600) { n ->
                 // Fingeren lægges på, skubber fanerne, og løftes igen
-                finger.translationX = if (left) 0f else -dpf(150f)
-                finger.animate().alpha(0.3f).setStartDelay(0).setDuration(150).withEndAction {
-                    finger.animate().translationX(if (left) -dpf(150f) else 0f).setDuration(700).withEndAction {
-                        finger.animate().alpha(0f).setDuration(200).start()
+                val toLeft = n % 2 == 0
+                finger.translationX = if (toLeft) 0f else -dist.toFloat()
+                finger.animate().alpha(0.35f).setStartDelay(0).setDuration(150).withEndAction {
+                    finger.animate().translationX(if (toLeft) -dist.toFloat() else 0f).setStartDelay(0).setDuration(800).withEndAction {
+                        finger.animate().alpha(0f).setStartDelay(0).setDuration(200).start()
                     }.start()
-                    tabs.animate().translationX(if (left) -dpf(150f) else 0f).setDuration(700).start()
+                    glide(strip, horizontal = true, to = if (toLeft) dist else 0, ms = 800)
                 }.start()
             }
-            strip
+            box
         },
         Page(
             "Nulstil og Søg altid ved hånden",
-            "Under søgninger ligger Nulstil og Søg som en lille pille nederst – også når du ruller ned i resultaterne.",
+            "Under søgninger ligger Nulstil og Søg som en lille pille nederst – også når du ruller ned i resultaterne. Til toppen-knappen er der stadig.",
         ) {
-            fun field(t: String) = text(t, 13f, tc.sub).apply {
-                background = rounded(tc.card, 6, tc.key)
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                layoutParams = LinearLayout.LayoutParams(dp(240), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+            val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+            val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+            fun field(label: String?, value: String) = FrameLayout(this).apply {
+                addView(text(value, 13f, if (label != null) tc.fg else tc.sub).apply {
+                    background = rounded(Color.TRANSPARENT, 6, tc.sub)
+                    setPadding(dp(10), dp(9), dp(10), dp(9))
+                }, FrameLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                if (label != null) addView(text(label, 10f, tc.sub).apply { setBackgroundColor(tc.card); setPadding(dp(3), 0, dp(3), 0) },
+                    FrameLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(8) })
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) }
             }
-            fun result() = View(this).apply {
-                background = rounded(tc.card, 6)
-                layoutParams = LinearLayout.LayoutParams(dp(240), dp(30)).apply { topMargin = dp(6) }
-            }
-            val content = LinearLayout(this).apply {
+            val sw = Switch(true)
+            val searchCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                addView(field("Låner"))
-                addView(field("Navn"))
-                addView(field("Telefon"))
-                repeat(5) { addView(result()) }
+                background = rounded(tc.card, 10)
+                setPadding(dp(12), dp(10), dp(12), dp(12))
+                addView(hrow(sw.view, text("Beholdning", 13f)))
+                addView(field("Titel", "Harry Potter"))
+                addView(field(null, "Forfatter"))
+                addView(field(null, "Emne"))
+                addView(text("Flere filtre", 13f, tc.fg, true).apply { setPadding(dp(8), dp(12), 0, 0) })
             }
+            val covers = listOf("#E05A7A", "#E8604C", "#7A5CC8", "#5C7FC8", "#B04A3A", "#3E9E6A", "#4A6FB0", "#C89A3A")
+            val titles = listOf("Pocket Potters – Luna", "Potter mini – Luna", "Potter mini – Dumbledore", "Pocket Potters – Dumbledore",
+                "Lyden af eventyr", "Pocket Potters – Hermione", "Pocket Potters – Ron", "Potter mini – Hagrid")
+            val results = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(tc.card, 10)
+                setPadding(dp(12), dp(10), dp(12), dp(6))
+                addView(text("1 – 30 af 128 resultater", 12f, tc.sub).apply { setPadding(0, 0, 0, dp(6)) })
+                titles.forEachIndexed { k, t ->
+                    addView(LinearLayout(this@GuideActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(4), dp(7), dp(4), dp(7))
+                        if (k % 2 == 0) background = rounded(tc.tile, 4)
+                        addView(View(this@GuideActivity).apply { background = rounded(Color.parseColor(covers[k]), 2) }, LinearLayout.LayoutParams(dp(16), dp(22)))
+                        addView(LinearLayout(this@GuideActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            addView(text(t, 12f))
+                            addView(text("Rowling, Joanne K.", 11f, tc.sub))
+                        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = dp(10) })
+                    }, LinearLayout.LayoutParams(MATCH, WRAP))
+                }
+            }
+            val page = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(8), dp(8), dp(8), dp(60))
+                addView(searchCard, LinearLayout.LayoutParams(MATCH, WRAP))
+                addView(results, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+            }
+            val scroller = stillScroll(horizontal = false).apply { addView(page) }
             val pillRow = hrow(
                 text("Nulstil", 13f, tc.fg, true),
                 text("Søg", 13f, Color.WHITE, true).apply { background = rounded(tc.blue, 14); setPadding(dp(14), dp(5), dp(14), dp(5)) },
                 gap = 14,
             ).apply {
-                background = rounded(tc.card, 22)
+                background = rounded(tc.card, 22, tc.key)
                 elevation = dpf(4f)
                 setPadding(dp(16), dp(6), dp(8), dp(6))
             }
-            val box = FrameLayout(this).apply {
-                clipChildren = true
-                clipToOutline = true
-                background = rounded(tc.tile, 12)
-                setPadding(dp(10), dp(4), dp(10), 0)
-                addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-                addView(pillRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                    bottomMargin = dp(10)
-                })
-                layoutParams = FrameLayout.LayoutParams(dp(260), dp(200))
+            val up = FrameLayout(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.key) }
+                elevation = dpf(4f)
+                addView(icon(R.drawable.ic_chevron_up, tc.fg, 22), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+                alpha = 0f
             }
-            // Siden ruller op og ned – pillen bliver liggende
-            loop(2400) { n -> content.animate().translationY(if (n % 2 == 1) -dpf(140f) else 0f).setDuration(1100).start() }
+            val box = FrameLayout(this).apply {
+                background = rounded(tc.bg, 14, tc.key)
+                clipToOutline = true
+                addView(scroller, FrameLayout.LayoutParams(MATCH, MATCH))
+                addView(pillRow, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(10) })
+                addView(up, FrameLayout.LayoutParams(dp(36), dp(36), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(12), 0, 0, dp(12)) })
+                layoutParams = FrameLayout.LayoutParams(dp(270), dp(340))
+            }
+            // Siden ruller ned og op igen – pillen bliver liggende, og "til toppen" kommer frem, når der er rullet
+            loop(2800) { n ->
+                val down = n % 2 == 1
+                val max = (page.height - scroller.height).coerceAtLeast(0)
+                glide(scroller, horizontal = false, to = if (down) max else 0, ms = 1300)
+                up.animate().alpha(if (down) 1f else 0f).setStartDelay(if (down) 400 else 0).setDuration(250).start()
+            }
             box
         },
         Page(
