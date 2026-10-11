@@ -102,9 +102,15 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private var part = 1
     private var total = 1
     private var single = false // "Kun én del" i stedet for hele sættet
+    // Nummeret, appen selv har sat i feltet fra en læst chip (null = brugeren har skrevet selv)
+    private var autoFilled: String? = null
+    private lateinit var copyBtn: TextView
+    private lateinit var flashView: android.widget.ImageView
 
     private val scan = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         r.data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let {
+            autoFilled = null
+            input.setSelectAllOnFocus(false)
             input.setText(it)
             input.setSelection(it.length)
             LogBuf.add("Værktøj: nummer læst med kamera")
@@ -204,7 +210,20 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             setPadding(dp(14), dp(12), dp(14), dp(14))
             addView(stateText)
             addView(numberLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-            addView(statusTitle)
+            // Materialenummeret med en kopiér-knap ved siden af
+            copyBtn = TextView(this@TagToolActivity).apply {
+                text = "Kopiér"
+                textSize = 15f
+                setTextColor(blue)
+                setPadding(dp(12), dp(8), dp(4), dp(8))
+                setOnClickListener { copyNumber() }
+            }
+            addView(LinearLayout(this@TagToolActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(statusTitle, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(copyBtn)
+            })
             addView(tiles, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
         col.addView(cardBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -239,6 +258,17 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             background = GradientDrawable().apply { setColor(card); setStroke(dp(1), sub); cornerRadius = dp(10).toFloat() }
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
+        // Skriver man selv, er det ikke længere chippens nummer, og det må ikke overskrives
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (autoFilled != null && s.toString() != autoFilled) {
+                    autoFilled = null
+                    input.setSelectAllOnFocus(false)
+                }
+            }
+        })
         abcBtn = button("ABC", keyBg, fg) {
             val isNumber = (input.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_NUMBER
             input.inputType = if (isNumber) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS else InputType.TYPE_CLASS_NUMBER
@@ -285,7 +315,16 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             fitsSystemWindows = true
             addView(col)
         }
-        setContentView(scroll)
+        // Stort flueben/kryds midt på skærmen, der toner ud – så man kan se resultatet på afstand
+        flashView = android.widget.ImageView(this).apply {
+            alpha = 0f
+            visibility = View.GONE
+            setPadding(dp(30), dp(30), dp(30), dp(30))
+        }
+        setContentView(android.widget.FrameLayout(this).apply {
+            addView(scroll)
+            addView(flashView, android.widget.FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER))
+        })
         window.statusBarColor = bg
         window.navigationBarColor = bg
         if (!dark && Build.VERSION.SDK_INT >= 30) {
@@ -424,12 +463,15 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 stateText.text = "Hold et tag mod telefonen"
                 numberLabel.visibility = View.GONE
                 statusTitle.visibility = View.GONE
+                copyBtn.visibility = View.GONE
                 tagButtons.visibility = View.GONE
                 return@runOnUiThread
             }
             val c = i.content
             val hasNumber = c != null && i.danish && !i.blank
             numberLabel.visibility = if (hasNumber) View.VISIBLE else View.GONE
+            copyBtn.visibility = if (hasNumber && !c?.barcode.isNullOrEmpty()) View.VISIBLE else View.GONE
+            copyBtn.text = "Kopiér"
             statusTitle.visibility = View.VISIBLE
             statusTitle.text = when {
                 i.blank -> "Tom chip"
@@ -498,6 +540,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         info = readInfo(pt)
         if (pending == null) say("", fg)
         showInfo()
+        if (pending == null) prefill(info)
         vibrate(longArrayOf(0, 50))
         maybeProgram()
     }
@@ -539,6 +582,56 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     }
 
     /** Kør en handling på tagget ved telefonen; læs det igen bagefter, så kortet viser det rigtige */
+    private fun copyNumber() {
+        val nr = info?.content?.barcode?.takeIf { it.isNotEmpty() } ?: return
+        getSystemService(android.content.ClipboardManager::class.java)
+            ?.setPrimaryClip(android.content.ClipData.newPlainText("Materialenummer", nr))
+        copyBtn.text = "Kopieret ✓"
+        handler.postDelayed({ if (::copyBtn.isInitialized) copyBtn.text = "Kopiér" }, 1500)
+    }
+
+    /**
+     * En læst chip med materialenummer fylder feltet "Programmér chip" ud (markeret, så det forsvinder, når man
+     * skriver), og antal dele sættes. Har man selv skrevet noget, røres feltet ikke.
+     */
+    private fun prefill(i: Info?) {
+        val c = i?.content ?: return
+        if (!i.danish || i.blank || c.barcode.isEmpty()) return
+        runOnUiThread {
+            val current = input.text.toString()
+            if (current.isNotEmpty() && current != autoFilled) return@runOnUiThread
+            autoFilled = c.barcode
+            input.setText(c.barcode)
+            input.setSelectAllOnFocus(true)
+            if (input.hasFocus()) input.selectAll()
+            if (c.numItems in 1..99) {
+                total = c.numItems
+                part = if (c.seqNum in 1..total) c.seqNum else 1
+                if (total == 1) single = false
+                updateParts()
+            }
+        }
+    }
+
+    /** Stort grønt flueben eller rødt kryds, der toner ud */
+    private fun flash(ok: Boolean) {
+        runOnUiThread {
+            flashView.animate().cancel()
+            flashView.setImageResource(if (ok) R.drawable.ic_check else R.drawable.ic_close)
+            flashView.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(if (ok) green else red)
+            }
+            flashView.visibility = View.VISIBLE
+            flashView.alpha = 0f
+            flashView.scaleX = 0.7f; flashView.scaleY = 0.7f
+            flashView.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).withEndAction {
+                flashView.animate().alpha(0f).setStartDelay(700).setDuration(400)
+                    .withEndAction { flashView.visibility = View.GONE }.start()
+            }.start()
+        }
+    }
+
     private fun withTag(what: String, f: (PhoneTag, Info) -> String) {
         exec.execute {
             val t = tag
@@ -552,10 +645,12 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 info = readInfo(t)
                 showInfo()
                 say(msg, green)
+                flash(true)
                 vibrate(longArrayOf(0, 110, 80, 110))
             } catch (e: Exception) {
                 LogBuf.add("Værktøj: $what fejlede: ${e.message}")
                 say("$what fejlede – hold tagget stille og prøv igen", red)
+                flash(false)
                 vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
             }
         }
@@ -674,6 +769,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             showInfo()
             LogBuf.add("Værktøj: programmeret ${p.barcode} del ${p.part}/${p.total}")
             vibrate(longArrayOf(0, 110, 80, 110))
+            flash(true)
             if (!p.single && p.part < p.total) {
                 p.part++
                 runOnUiThread { part = p.part; updateParts() }
@@ -695,6 +791,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         } catch (e: Exception) {
             LogBuf.add("Værktøj: programmering fejlede: ${e.message}")
             say("Skrivning fejlede – løft chippen og hold den mod telefonen igen", red)
+            flash(false)
             vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
         }
     }
