@@ -21,14 +21,19 @@ import kotlin.concurrent.thread
  * så en manipuleret fil kan ikke komme ind ad denne vej.
  */
 object Updater {
+    // Lille fil, som byggeriet lægger ved hver udgivelse. Den tæller ikke med i GitHubs grænse på
+    // 60 opslag i timen (som alle telefoner på samme net deler), så der kan tjekkes ofte.
+    private const val VERSION_FILE = "https://github.com/kaspersvangren/cicero-nfc/releases/latest/download/version.json"
+    // Reserve, hvis filen ikke kan hentes
     private const val API = "https://api.github.com/repos/kaspersvangren/cicero-nfc/releases/latest"
+    private const val REPO_DOWNLOAD = "https://github.com/kaspersvangren/cicero-nfc/releases/download/"
     // Begge projektnavne godtages, så projektet senere kan omdøbes uden at opdateringen går i stykker
     private val DOWNLOAD_PREFIXES = listOf(
         "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
         "https://github.com/kaspersvangren/nfclibra/releases/download/",
     )
     private val APK_NAMES = setOf("CiceroNFC.apk", "NFClibra.apk")
-    private const val CHECK_EVERY_MS = 6 * 60 * 60 * 1000L
+    private const val CHECK_EVERY_MS = 15 * 60 * 1000L
 
     class Info(val name: String, val url: String, val notes: String)
 
@@ -49,7 +54,7 @@ object Updater {
         return if (Build.VERSION.SDK_INT >= 28) p.longVersionCode else @Suppress("DEPRECATION") p.versionCode.toLong()
     }
 
-    /** Tjek højst hver 6. time – eller med det samme, hvis [force]. [onDone] kaldes på en baggrundstråd. */
+    /** Tjek højst hvert 15. minut – eller med det samme, hvis [force]. [onDone] kaldes på en baggrundstråd. */
     fun check(ctx: Context, force: Boolean = false, onDone: ((Info?, String?) -> Unit)? = null) {
         val now = SystemClock.elapsedRealtime()
         if (checking) return
@@ -60,27 +65,17 @@ object Updater {
         thread(isDaemon = true, name = "update-check") {
             var error: String? = null
             try {
-                val c = (URL(API).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 10_000
-                    readTimeout = 10_000
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("User-Agent", "CiceroNFC")
+                val (tag, u, rawNotes) = try {
+                    fromVersionFile()
+                } catch (e: Exception) {
+                    LogBuf.add("Versionsfil ikke hentet (${e.message}) – spørger GitHub")
+                    fromApi()
                 }
-                if (c.responseCode != 200) throw IOException("GitHub svarede ${c.responseCode}")
-                val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-                val tag = j.getString("tag_name")
                 val code = Regex("""^v\d+\.\d+\.(\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
                     ?: throw IOException("ukendt versionsnummer $tag")
-                var url: String? = null
-                val assets = j.getJSONArray("assets")
-                for (i in 0 until assets.length()) {
-                    val a = assets.getJSONObject(i)
-                    if (a.getString("name") in APK_NAMES) url = a.getString("browser_download_url")
-                }
-                val u = url
-                if (u == null || DOWNLOAD_PREFIXES.none { u.startsWith(it) }) throw IOException("ingen app-fil i udgivelsen")
+                if (DOWNLOAD_PREFIXES.none { u.startsWith(it) } || APK_NAMES.none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
                 // Kort ændringsliste fra udgivelsen (uden byggelinjen), højst 600 tegn
-                val notes = j.optString("body", "").lines()
+                val notes = rawNotes.lines()
                     .filterNot { it.startsWith("Bygget fra") }
                     .joinToString("\n").trim().take(600)
                 available = if (code > currentCode(app)) Info(tag.removePrefix("v"), u, notes) else null
@@ -94,6 +89,39 @@ object Updater {
             listener?.invoke()
             onDone?.invoke(available, error)
         }
+    }
+
+    private fun get(url: String, json: Boolean): String {
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            useCaches = false
+            if (json) setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "CiceroNFC")
+        }
+        if (c.responseCode != 200) throw IOException("GitHub svarede ${c.responseCode}")
+        return c.inputStream.bufferedReader().use { it.readText() }
+    }
+
+    /** Version, app-fil og ændringer fra versionsfilen */
+    private fun fromVersionFile(): Triple<String, String, String> {
+        val j = JSONObject(get(VERSION_FILE, json = false))
+        val tag = j.getString("tag")
+        val apk = j.getString("apk")
+        if (apk !in APK_NAMES || !Regex("""^v\d+\.\d+\.\d+$""").matches(tag)) throw IOException("ugyldig versionsfil")
+        return Triple(tag, "$REPO_DOWNLOAD$tag/$apk", j.optString("notes", ""))
+    }
+
+    /** Det samme fra GitHubs API (reserve) */
+    private fun fromApi(): Triple<String, String, String> {
+        val j = JSONObject(get(API, json = true))
+        var url = ""
+        val assets = j.getJSONArray("assets")
+        for (i in 0 until assets.length()) {
+            val a = assets.getJSONObject(i)
+            if (a.getString("name") in APK_NAMES) url = a.getString("browser_download_url")
+        }
+        return Triple(j.getString("tag_name"), url, j.optString("body", ""))
     }
 
     /** Hent den nye version og bed Android installere den. Android spørger brugeren først. */

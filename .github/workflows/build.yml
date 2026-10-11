@@ -73,7 +73,10 @@ jobs:
             git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session|Signed-off-by):' > notes.txt
           fi
           printf '\nBygget fra %s\n' "${GITHUB_SHA::7}" >> notes.txt
-          gh release create "v0.1.${{ github.run_number }}" CiceroNFC.apk \
+          # Lille versionsfil, som app'en tjekker (tæller ikke med i GitHubs grænse for API-opslag)
+          jq -n --arg tag "v0.1.${{ github.run_number }}" --rawfile notes notes.txt \
+            '{tag: $tag, apk: "CiceroNFC.apk", notes: $notes}' > version.json
+          gh release create "v0.1.${{ github.run_number }}" CiceroNFC.apk version.json \
             --title "Cicero NFC 0.1.${{ github.run_number }}" \
             --notes-file notes.txt --latest
 

@@ -659,6 +659,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             ) {
                 lock()
             }
+            // Står app'en fremme hele dagen, tjekkes der stadig for ny version (højst hvert 15. minut)
+            Updater.check(this@MainActivity)
             handler.postDelayed(this, 10_000)
         }
     }
