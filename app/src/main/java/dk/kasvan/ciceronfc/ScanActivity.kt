@@ -1,46 +1,38 @@
 package dk.kasvan.ciceronfc
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Rect
-import android.nfc.NfcAdapter
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Size
-import android.view.MotionEvent
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.mlkit.vision.MlKitAnalyzer
+import androidx.camera.view.CameraController
+import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /**
  * Kamera, der læser materialenummeret – både stregkoder og trykte tal (fx på en etiket i bogen).
@@ -53,18 +45,20 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
     }
 
-    private class Candidate(val value: String, val barcode: Boolean, var lastSeen: Long, var hits: Int, var inFrame: Int) {
+    private class Candidate(val value: String, val barcode: Boolean, var lastSeen: Long, var hits: Int) {
         var clean = 0      // set uden bindestreg/mellemrum
         var isbnHint = false
     }
 
     private lateinit var executor: ExecutorService
     // Lukkes skærmen midt i en genkendelse, må det sene svar ikke få app'en til at gå ned
-    private val safe = Executor { r -> try { executor.execute(r) } catch (_: Exception) {} }
+    private val safe = java.util.concurrent.Executor { r -> try { executor.execute(r) } catch (_: Exception) {} }
     private lateinit var preview: PreviewView
+    private var controller: LifecycleCameraController? = null
+    // Sigte-rammen i billedets (skærmens) koordinater – kun det, der står inden for den, tæller
+    @Volatile private var frameRect: Rect? = null
     private lateinit var list: LinearLayout
     private lateinit var hint: TextView
-    private var camera: Camera? = null
     private var torch = false
     private var dark = true
     private lateinit var tc: ToolColors
@@ -77,8 +71,8 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private lateinit var camBox: FrameLayout
     private val nfc by lazy { NfcAdapter.getDefaultAdapter(this) }
     // Sigte-rammens størrelse på skærmen
-    private val frameW get() = dp(280)
-    private val frameH get() = dp(120)
+    private val frameW get() = dp(300)
+    private val frameH get() = dp(140)
 
     private val barcodes by lazy { BarcodeScanning.getClient() }
     private val texts by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
@@ -110,13 +104,9 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             addView(preview, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(frame, FrameLayout.LayoutParams(frameW, frameH, Gravity.CENTER))
         }
-        // Tryk på billedet for at stille skarpt dér
-        preview.setOnTouchListener { v, e ->
-            if (e.action == MotionEvent.ACTION_UP) { focusAt(e.x, e.y); v.performClick() }
-            true
-        }
+        frame.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ -> frameRect = Rect(l, t, r, b) }
         hint = TextView(this).apply {
-            text = "Peg på materialenummeret – stregkode eller tal. Tryk på billedet for skarpt billede, og på det rigtige nummer nedenfor."
+            text = "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og på det rigtige nummer nedenfor."
             textSize = 15f
             setTextColor(sub)
             setPadding(dp(16), dp(10), dp(16), dp(6))
@@ -141,7 +131,7 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         bottom.addView(smallButton("Annuller") { finish() })
         bottom.addView(smallButton("Lys til") { b ->
             torch = !torch
-            camera?.cameraControl?.enableTorch(torch)
+            controller?.enableTorch(torch)
             b.text = if (torch) "Lys fra" else "Lys til"
         })
         bottom.addView(smallButton("Zoom 1×") { b ->
@@ -169,108 +159,78 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /**
+     * Kameraet styres af CameraX' egen controller: den sørger for tryk-for-skarpt, og genkendelsen får
+     * placeringen af hvert nummer direkte i skærmens koordinater – så det kan afgøres præcist, om det står i rammen.
+     */
     private fun startCamera() {
-        val future = ProcessCameraProvider.getInstance(this)
-        future.addListener({
-            try {
-                val provider = future.get()
-                // Samme billedformat til visning og genkendelse, så rammen passer; større billede = skarpere tal
-                val sel = ResolutionSelector.Builder()
-                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
-                    .setResolutionStrategy(ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
-                    .build()
-                val pv = Preview.Builder().setResolutionSelector(sel).build().also { it.setSurfaceProvider(preview.surfaceProvider) }
-                val analysis = ImageAnalysis.Builder()
-                    .setResolutionSelector(sel)
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                analysis.setAnalyzer(executor) { analyze(it) }
-                provider.unbindAll()
-                camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, pv, analysis)
-                // 2× zoom fra start: telefonen holdes længere væk, hvor den kan stille skarpt (og fri af chippen)
-                applyZoom()
-                preview.post { focusAt(preview.width / 2f, preview.height / 2f) }
-            } catch (e: Exception) {
-                LogBuf.add("Kamera kunne ikke starte: ${e.message}")
-                hint.text = "Kameraet kunne ikke starte"
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun applyZoom() {
-        val c = camera ?: return
-        val max = c.cameraInfo.zoomState.value?.maxZoomRatio ?: 1f
-        c.cameraControl.setZoomRatio(if (zoomed) minOf(2f, max) else 1f)
-    }
-
-    private fun focusAt(x: Float, y: Float) {
-        val c = camera ?: return
         try {
-            val point = preview.meteringPointFactory.createPoint(x, y)
-            c.cameraControl.startFocusAndMetering(
-                FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
-                    .setAutoCancelDuration(4, TimeUnit.SECONDS)
-                    .build()
+            val c = LifecycleCameraController(this)
+            c.cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            c.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
+            c.imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+            // Større billede til genkendelsen = skarpere tal
+            c.imageAnalysisResolutionSelector = ResolutionSelector.Builder()
+                .setResolutionStrategy(ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
+                .build()
+            c.isTapToFocusEnabled = true
+            c.setImageAnalysisAnalyzer(
+                executor,
+                MlKitAnalyzer(listOf(barcodes, texts), ImageAnalysis.COORDINATE_SYSTEM_VIEW_REFERENCED, safe) { r -> handle(r) },
             )
-        } catch (_: Exception) {}
-    }
-
-    /** Sigte-rammen omregnet til billedets koordinater (lidt større, så små skævheder ikke betyder noget). */
-    private fun frameInImage(w: Int, h: Int): Rect? {
-        val vw = camBox.width; val vh = camBox.height
-        if (vw == 0 || vh == 0 || w == 0 || h == 0) return null
-        val scale = maxOf(vw.toFloat() / w, vh.toFloat() / h) // FILL_CENTER
-        val hw = frameW * 0.75f / scale; val hh = frameH * 0.9f / scale
-        return Rect((w / 2 - hw).toInt(), (h / 2 - hh).toInt(), (w / 2 + hw).toInt(), (h / 2 + hh).toInt())
-    }
-
-    @SuppressLint("UnsafeOptInUsageError")
-    private fun analyze(p: ImageProxy) {
-        val media = p.image
-        if (media == null) { p.close(); return }
-        val rot = p.imageInfo.rotationDegrees
-        val upW = if (rot % 180 == 0) p.width else p.height
-        val upH = if (rot % 180 == 0) p.height else p.width
-        val box = frameInImage(upW, upH)
-        fun inside(r: Rect?) = box != null && r != null && box.contains(r.centerX(), r.centerY())
-        val img = InputImage.fromMediaImage(media, rot)
-        val tb = barcodes.process(img)
-        val tt = texts.process(img)
-        Tasks.whenAllComplete(tb, tt).addOnCompleteListener(safe) {
-            val now = SystemClock.elapsedRealtime()
-            if (tb.isSuccessful) {
-                for (b in tb.result) {
-                    val v = b.rawValue?.trim() ?: continue
-                    if (v.length in 1..16 && v.all { it.code in 0x21..0x7E }) add(v, true, now, inside(b.boundingBox), true, false)
-                }
-            }
-            if (tt.isSuccessful) {
-                for (block in tt.result.textBlocks) for (line in block.lines) {
-                    val inF = inside(line.boundingBox)
-                    val isbnLine = line.text.contains("ISBN", ignoreCase = true)
-                    for (m in DIGITS.findAll(line.text)) {
-                        val v = m.value.filter { it.isDigit() }
-                        if (v.length in 8..16) add(v, false, now, inF, m.value.all { it.isDigit() }, isbnLine)
-                    }
-                }
-            } else if (!notReadyLogged) {
-                // Fx første gang, mens Play-tjenester stadig henter tekstgenkendelsen
-                notReadyLogged = true
-                LogBuf.add("Tekstgenkendelse ikke klar: ${tt.exception?.message}")
-            }
-            p.close()
-            if (now - lastUiUpdate > 300) {
-                lastUiUpdate = now
-                runOnUiThread { showCandidates() }
-            }
+            preview.controller = c
+            c.bindToLifecycle(this)
+            controller = c
+            // 2× zoom fra start: telefonen holdes længere væk, hvor den kan stille skarpt (og fri af chippen)
+            c.initializationFuture.addListener({ applyZoom() }, ContextCompat.getMainExecutor(this))
+        } catch (e: Exception) {
+            LogBuf.add("Kamera kunne ikke starte: ${e.message}")
+            hint.text = "Kameraet kunne ikke starte"
         }
     }
 
-    private fun add(v: String, barcode: Boolean, now: Long, inFrame: Boolean, clean: Boolean, isbnHint: Boolean) {
+    private fun applyZoom() {
+        val c = controller ?: return
+        val max = c.zoomState.value?.maxZoomRatio ?: 1f
+        c.setZoomRatio(if (zoomed) minOf(2f, max) else 1f)
+    }
+
+    private fun inFrame(r: Rect?): Boolean {
+        val f = frameRect ?: return false
+        return r != null && f.contains(r.centerX(), r.centerY())
+    }
+
+    private fun handle(r: MlKitAnalyzer.Result) {
+        val now = SystemClock.elapsedRealtime()
+        r.getValue(barcodes)?.forEach { b ->
+            val v = b.rawValue?.trim() ?: return@forEach
+            if (inFrame(b.boundingBox) && v.length in 1..16 && v.all { it.code in 0x21..0x7E }) add(v, true, now, true, false)
+        }
+        val text = r.getValue(texts)
+        if (text != null) {
+            for (block in text.textBlocks) for (line in block.lines) {
+                if (!inFrame(line.boundingBox)) continue
+                val isbnLine = line.text.contains("ISBN", ignoreCase = true)
+                for (m in DIGITS.findAll(line.text)) {
+                    val v = m.value.filter { it.isDigit() }
+                    if (v.length in 8..16) add(v, false, now, m.value.all { it.isDigit() }, isbnLine)
+                }
+            }
+        } else if (!notReadyLogged && r.getThrowable(texts) != null) {
+            // Fx første gang, mens Play-tjenester stadig henter tekstgenkendelsen
+            notReadyLogged = true
+            LogBuf.add("Tekstgenkendelse ikke klar: ${r.getThrowable(texts)?.message}")
+        }
+        if (now - lastUiUpdate > 250) {
+            lastUiUpdate = now
+            runOnUiThread { showCandidates() }
+        }
+    }
+
+    private fun add(v: String, barcode: Boolean, now: Long, clean: Boolean, isbnHint: Boolean) {
         synchronized(candidates) {
-            val c = candidates.getOrPut(v) { Candidate(v, barcode, now, 0, 0) }
+            val c = candidates.getOrPut(v) { Candidate(v, barcode, now, 0) }
             c.lastSeen = now; c.hits++
-            if (inFrame) c.inFrame++
             if (clean) c.clean++
             if (isbnHint) c.isbnHint = true
         }
@@ -294,8 +254,8 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private fun showCandidates() {
         val now = SystemClock.elapsedRealtime()
         val shown = synchronized(candidates) {
-            // Glem numre, der ikke er set i 6 sekunder; stregkoder og ofte sete tal øverst
-            candidates.values.removeAll { now - it.lastSeen > 6000 }
+            // Listen følger billedet: et nummer, der ikke er set i rammen i 1½ sekund, forsvinder
+            candidates.values.removeAll { now - it.lastSeen > 1500 }
             // Tal skal ses mindst 2 gange (stregkoder har kontrolciffer), og et tal, der er en del af
             // et længere nummer (fx uden første ciffer), vises ikke
             val sure = candidates.values.filter { it.barcode || it.hits >= 2 }
@@ -305,7 +265,7 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                         o.value.contains(c.value) && tier(o) <= tier(c)
                 }
             }
-                .sortedWith(compareBy<Candidate> { tier(it) }.thenByDescending { it.barcode }.thenByDescending { it.inFrame }.thenByDescending { it.hits })
+                .sortedWith(compareBy<Candidate> { tier(it) }.thenByDescending { it.barcode }.thenByDescending { it.hits })
                 .take(5)
         }
         list.removeAllViews()

@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Kameraet i værktøjet læser kun det, der står inden for rammen (og intet uden for skærmen), og listen følger billedet. Rammen er lidt større.
 - **0.1.49** – App'en hedder nu NFClibra. Menuen åbnes med et tandhjul og er så smal som indholdet. Pinkode-tastaturet: personalets knapper ligger i en bjælke for sig og vender ikke med. Værktøj til tags: antal dele vælges med ét tryk (også flere end 6), og man vælger hele sættet eller kun én del.
 - **0.1.48** – Ikoner ved punkterne i menuen ⋮, og menuen er smallere.
 - **0.1.47** – Værktøj til tags er en blå knap nederst i menuen ⋮, adskilt fra listen. Menuen følger Ciceros lyse/mørke farver.
