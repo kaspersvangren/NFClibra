@@ -181,11 +181,15 @@ class GuideActivity : ComponentActivity() {
         if (stroke != null) setStroke(dp(1), stroke)
     }
 
+    // Alle byggeklodser får "så stor som indholdet" som udgangspunkt – ellers kan en lodret boks skære teksten af
+    private fun wrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+
     private fun text(t: String, size: Float, color: Int = tc.fg, bold: Boolean = false) = TextView(this).apply {
         text = t
         textSize = size
         setTextColor(color)
         maxLines = 1
+        layoutParams = wrap()
         if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
@@ -197,6 +201,7 @@ class GuideActivity : ComponentActivity() {
 
     private fun card(vararg children: View, pad: Int = 12) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
+        layoutParams = wrap()
         background = rounded(tc.card, 14)
         setPadding(dp(pad), dp(pad), dp(pad), dp(pad))
         for (c in children) addView(c)
@@ -205,6 +210,7 @@ class GuideActivity : ComponentActivity() {
     private fun hrow(vararg children: View, gap: Int = 8) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
+        layoutParams = wrap()
         children.forEachIndexed { k, c ->
             val lp = (c.layoutParams as? LinearLayout.LayoutParams)
                 ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -216,6 +222,7 @@ class GuideActivity : ComponentActivity() {
     /** Pillen fra bjælken */
     private fun pill(color: Int, iconRes: Int, words: String): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
+        layoutParams = wrap()
         gravity = Gravity.CENTER_VERTICAL
         background = rounded(color, 20)
         setPadding(dp(10), dp(5), dp(12), dp(5))
@@ -306,6 +313,7 @@ class GuideActivity : ComponentActivity() {
                 View(this).apply { setBackgroundColor(tc.key); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply { setMargins(0, dp(6), 0, dp(8)) } },
                 hrow(icon(R.drawable.ic_menu_nfc, Color.WHITE, 18), text("Værktøj til tags", 15f, Color.WHITE, true)).apply {
                     gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     background = rounded(tc.blue, 20)
                     setPadding(dp(12), dp(8), dp(12), dp(8))
                 },
@@ -329,7 +337,10 @@ class GuideActivity : ComponentActivity() {
             val c = card(
                 text("Chip ved telefonen", 12f, tc.sub),
                 text("5123456789", 22f, tc.fg, true).apply { typeface = Typeface.create("monospace", Typeface.BOLD) },
-                hrow(tile("Del", text("1 af 1", 14f)), tile("Alarm", alarm), gap = 6).apply { setPadding(0, dp(6), 0, 0) },
+                hrow(tile("Del", text("1 af 1", 14f)), tile("Alarm", alarm), gap = 6).apply {
+                    setPadding(0, dp(6), 0, 0)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                },
                 hrow(
                     text("Alarm til", 13f, Color.WHITE, true).apply { gravity = Gravity.CENTER; background = rounded(tc.orange, 10); setPadding(dp(10), dp(8), dp(10), dp(8)) },
                     text("Alarm fra", 13f, Color.WHITE, true).apply { gravity = Gravity.CENTER; background = rounded(tc.green, 10); setPadding(dp(10), dp(8), dp(10), dp(8)) },
@@ -357,6 +368,21 @@ class GuideActivity : ComponentActivity() {
                 }.start()
             }
             box
+        },
+        Page(
+            "Pinkode ved udlån",
+            "I Udlån sætter NFClibra en kontakt \"Pinkode\" ved siden af \"Send kvittering\". Den slår Ciceros krav om pinkode ved udlån til og fra med ét tryk.",
+        ) {
+            val send = Switch(true)
+            val pin = Switch(false)
+            loop(1500) { n -> pin.set(n % 2 == 1) }
+            card(
+                text("Udlån", 13f, tc.sub),
+                hrow(send.view, text("Send kvittering", 15f), View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(16), 1) }, pin.view, text("Pinkode", 15f, tc.fg, true)).apply {
+                    setPadding(0, dp(10), 0, dp(4))
+                },
+                pad = 14,
+            )
         },
         Page(
             "Pinkode-tastaturet",
@@ -402,21 +428,6 @@ class GuideActivity : ComponentActivity() {
                 }
             }
             pad
-        },
-        Page(
-            "Pinkode ved udlån",
-            "I Udlån sætter NFClibra en kontakt \"Pinkode\" ved siden af \"Send kvittering\". Den slår Ciceros krav om pinkode ved udlån til og fra med ét tryk.",
-        ) {
-            val send = Switch(true)
-            val pin = Switch(false)
-            loop(1500) { n -> pin.set(n % 2 == 1) }
-            card(
-                text("Udlån", 13f, tc.sub),
-                hrow(send.view, text("Send kvittering", 15f), View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(16), 1) }, pin.view, text("Pinkode", 15f, tc.fg, true)).apply {
-                    setPadding(0, dp(10), 0, dp(4))
-                },
-                pad = 14,
-            )
         },
         Page(
             "Søgninger i Cicero",
@@ -465,6 +476,36 @@ class GuideActivity : ComponentActivity() {
             box
         },
         Page(
+            "Kun NFC?",
+            "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan du slå alle ændringerne af Cicero fra – swipe-faner, pinkode-kontakten og Nulstil/Søg-pillen. Så ser Cicero ud præcis som normalt.",
+        ) {
+            fun box(on: Boolean) = TextView(this).apply {
+                text = if (on) "✓" else ""
+                textSize = 15f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = if (on) rounded(tc.blue, 4) else rounded(Color.TRANSPARENT, 4, tc.sub)
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
+            }
+            fun row(t: String, b: View) = hrow(text(t, 15f).apply { layoutParams = LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT) }, b).apply {
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            val tweaks = box(true)
+            loop(1600) { n ->
+                val on = n % 2 == 0
+                tweaks.text = if (on) "✓" else ""
+                tweaks.background = if (on) rounded(tc.blue, 4) else rounded(Color.TRANSPARENT, 4, tc.sub)
+            }
+            card(
+                text("Indstillinger", 17f, tc.fg, true).apply { setPadding(0, 0, 0, dp(6)) },
+                row("Lyd ved alarmskift", box(true)),
+                row("Pinkode-tastatur", box(true)),
+                row("Vend pinkode-tastatur", box(false)),
+                row("Tilpasninger af Cicero", tweaks),
+                pad = 16,
+            )
+        },
+        Page(
             "Låsen",
             "NFClibra låser sig efter 5 minutter uden brug og låses op med fingeraftryk eller pinkode. Mens den er låst, er Cicero skjult, og bøger læses ikke.",
         ) {
@@ -476,6 +517,21 @@ class GuideActivity : ComponentActivity() {
                 addView(icon(R.drawable.ic_lock, tc.fg, 56))
                 addView(text("NFClibra er låst", 18f, tc.fg, true).apply { setPadding(0, dp(12), 0, 0) })
                 addView(text("Tryk for at låse op", 14f, tc.sub).apply { setPadding(0, dp(4), 0, 0) })
+            }
+        },
+        Page(
+            "God fornøjelse",
+            "Jeg håber, NFClibra bliver til glæde og gavn – ved skranken og ude mellem hylderne. Har du idéer, eller driller noget, så sig endelig til.\n\n– Kasper",
+        ) {
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                layoutParams = wrap()
+                addView(FrameLayout(this@GuideActivity).apply {
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.green) }
+                    addView(icon(R.drawable.ic_check, Color.WHITE, 64), FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER))
+                }, LinearLayout.LayoutParams(dp(120), dp(120)))
+                addView(text("NFClibra", 24f, tc.fg, true).apply { setPadding(0, dp(14), 0, 0) })
             }
         },
     )
