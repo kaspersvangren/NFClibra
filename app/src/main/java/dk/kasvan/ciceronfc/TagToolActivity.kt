@@ -22,7 +22,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -141,7 +140,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         gravity = Gravity.CENTER
         setTextColor(textColor)
         background = GradientDrawable().apply { setColor(color); cornerRadius = dp(14).toFloat() }
-        setPadding(dp(8), dp(14), dp(8), dp(14))
+        setPadding(dp(6), dp(12), dp(6), dp(12))
         setOnClickListener { onClick() }
     }
 
@@ -161,7 +160,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private fun buildUi() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(24))
+            setPadding(dp(14), dp(2), dp(14), dp(10))
         }
 
         val back = TextView(this).apply {
@@ -184,7 +183,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             text = "Ret"
             textSize = 15f
             setTextColor(blue)
-            setPadding(dp(16), dp(8), dp(4), dp(8))
+            setPadding(dp(16), dp(4), dp(4), dp(4))
             setOnClickListener { askLibrary(null) }
         }
         col.addView(LinearLayout(this).apply {
@@ -213,9 +212,9 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         cardBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply { setColor(card); cornerRadius = dp(16).toFloat() }
-            setPadding(dp(14), dp(12), dp(14), dp(14))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             addView(stateText)
-            addView(numberLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            addView(numberLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             // Materialenummeret med en kopiér-knap ved siden af
             copyBtn = TextView(this@TagToolActivity).apply {
                 text = "Kopiér"
@@ -230,39 +229,38 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 addView(statusTitle, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(copyBtn)
             })
-            addView(tiles, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            addView(tiles, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         }
-        col.addView(cardBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        col.addView(cardBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         col.addView(feedback, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(8); marginStart = dp(4); marginEnd = dp(4)
+            topMargin = dp(6); marginStart = dp(4); marginEnd = dp(4)
         })
 
-        // Knapperne til tagget vises kun, mens det ligger ved telefonen
-        tagButtons = LinearLayout(this).apply {
+        // Knapperne til tagget: altid på én række
+        tagButtons = row(
+            button("Alarm til", orange) { alarm(true) },
+            button("Alarm fra", green) { alarm(false) },
+            button("Nulstil", keyBg, red) { confirmReset() },
+        )
+        col.addView(tagButtons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
+
+        // Programmér ny chip – sit eget kort, så det er tydeligt adskilt fra chippen ved telefonen
+        val prog = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(row(
-                button("Alarm til", orange) { alarm(true) },
-                button("Alarm fra", green) { alarm(false) },
-            ))
-            addView(row(button("Nulstil tag", keyBg, red) { confirmReset() }))
+            background = GradientDrawable().apply { setColor(card); cornerRadius = dp(16).toFloat() }
+            setPadding(dp(12), dp(10), dp(12), dp(12))
         }
-        col.addView(tagButtons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-
-        // Programmér ny chip
-        col.addView(label("Programmér chip", 18f, fg).apply {
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setPadding(dp(4), dp(20), 0, dp(4))
-        })
-        col.addView(label("Materialenummer").apply { setPadding(dp(4), 0, 0, dp(4)) })
+        col.addView(prog, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        prog.addView(label("Programmér ny chip", 13f).apply { setPadding(0, 0, 0, dp(6)) })
         input = EditText(this).apply {
-            textSize = 24f
+            textSize = 22f
             setTextColor(fg)
             setHintTextColor(sub)
-            hint = "fx 5123456789"
+            hint = "Materialenummer"
             inputType = InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
             background = GradientDrawable().apply { setColor(card); setStroke(dp(1), sub); cornerRadius = dp(10).toFloat() }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         // Skriver man selv, er det ikke længere chippens nummer, og det må ikke overskrives
         input.addTextChangedListener(object : android.text.TextWatcher {
@@ -284,7 +282,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         val camBtn = button("Kamera", blue) {
             scan.launch(Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, dark))
         }
-        col.addView(LinearLayout(this).apply {
+        prog.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -294,33 +292,34 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
         // Antal dele og hele sættet / kun én del – ét tryk, ingen tællen op og ned
         fun rowBox() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        col.addView(label("Antal dele").apply { setPadding(dp(4), dp(14), 0, dp(4)) })
+        prog.addView(label("Antal dele", 13f).apply { setPadding(0, dp(10), 0, dp(4)) })
         totalRow = rowBox()
-        col.addView(totalRow)
+        prog.addView(totalRow)
         modeRow = rowBox()
-        col.addView(modeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        prog.addView(modeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         partRow = rowBox()
         partBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(label("Hvilken del mangler?").apply { setPadding(dp(4), dp(10), 0, dp(4)) })
+            addView(label("Hvilken del mangler?", 13f).apply { setPadding(0, dp(8), 0, dp(4)) })
             addView(partRow)
         }
-        col.addView(partBox)
+        prog.addView(partBox)
         updateParts()
 
         writeBtn = button("Programmér chip", blue) { arm() }
         cancelBtn = button("Stop", keyBg, fg) { disarm("Stoppet") }.apply { visibility = View.GONE }
-        col.addView(writeBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
-        col.addView(cancelBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-        col.addView(label("Efter programmering er alarmen slået til (sikret). Telefonen skriver én chip ad gangen – sæt programmeres del for del.", 13f).apply {
-            setPadding(dp(4), dp(10), dp(4), 0)
-        })
+        prog.addView(writeBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        prog.addView(cancelBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
 
-        val scroll = ScrollView(this).apply {
+        // Altid på én skærm: er der ikke plads (lille skærm eller stor skrift), skaleres det hele ned, til det passer
+        val holder = android.widget.FrameLayout(this).apply {
             setBackgroundColor(bg)
             fitsSystemWindows = true
-            addView(col)
+            addView(col, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
         }
+        holder.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> holder.post { fitToScreen(holder, col) } }
+        col.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) holder.post { fitToScreen(holder, col) } }
+        val scroll = holder
         // Stort flueben/kryds midt på skærmen, der toner ud – så man kan se resultatet på afstand
         flashView = android.widget.ImageView(this).apply {
             alpha = 0f
@@ -379,6 +378,34 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             .setPositiveButton("OK") { _, _ -> set(picker.value) }
             .setNegativeButton("Annuller", null)
             .show()
+    }
+
+    private var fitScale = 1f
+
+    /** Skalér indholdet ned (aldrig op), så det kan være på skærmen uden at rulle */
+    private fun fitToScreen(holder: android.view.View, col: android.view.View) {
+        val availW = holder.width - holder.paddingLeft - holder.paddingRight
+        val availH = holder.height - holder.paddingTop - holder.paddingBottom
+        if (availW <= 0 || availH <= 0) return
+        var s = 1f
+        repeat(3) {
+            val w = (availW / s).toInt()
+            col.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+            )
+            val need = col.measuredHeight
+            s = if (need * s > availH) (availH.toFloat() / need).coerceAtLeast(0.6f) else s
+        }
+        if (kotlin.math.abs(s - fitScale) < 0.005f && col.layoutParams.width == (if (s < 1f) (availW / s).toInt() else android.view.ViewGroup.LayoutParams.MATCH_PARENT)) return
+        fitScale = s
+        col.pivotX = 0f
+        col.pivotY = 0f
+        col.scaleX = s
+        col.scaleY = s
+        col.layoutParams = col.layoutParams.apply {
+            width = if (s < 1f) (availW / s).toInt() else android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        }
     }
 
     private fun updateParts() {
