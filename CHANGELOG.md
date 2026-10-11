@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Låseskærmen viser NFClibras logo med en hængelås i et hul i hjørnet; bøjlen springer op, når du låser op. Guiden: swipe-faner og Nulstil/Søg-pillen har fået hver sin side, værktøjet nævner at kameraet læser både stregkode og tal, og menu-siden er rettet.
 - **0.1.57** – Guiden: ny rækkefølge (pinkode-kontakten før tastaturet), ny side om at bruge NFClibra kun som RFID-læser, en afsluttende hilsen, og teksten på låsesiden bliver ikke længere skåret af.
 - **0.1.56** – Rundvisningen er erstattet af en guide med små animerede tegninger: pillen, menuen, Værktøj til tags, pinkode-tastaturet, pinkode-kontakten i Udlån, søgninger i Cicero og låsen. Vises første gang og ligger i menuen under Guide. Tipsene i Cicero er fjernet.
 - **0.1.55** – Nulstil/Søg-pillen kommer igen, når man har været på en anden side i Cicero og vender tilbage til søgningen. Tippet til pillen vises nu.

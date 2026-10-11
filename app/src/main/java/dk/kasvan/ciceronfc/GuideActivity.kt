@@ -298,7 +298,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Menuen",
-            "Tandhjulet øverst til højre åbner menuen. Under Indstillinger slår du lyd, pinkode-tastaturet og tilpasningerne af Cicero til og fra. Guiden finder du igen her.",
+            "Tandhjulet øverst til højre åbner menuen. Under Indstillinger kan du fx slå lyd og pinkode-tastaturet til og fra. Guiden finder du igen her.",
         ) {
             fun item(res: Int, t: String, hi: Boolean = false) = hrow(icon(res, if (hi) tc.blue else tc.sub, 18), text(t, 15f, if (hi) tc.blue else tc.fg, hi), gap = 12).apply {
                 setPadding(dp(6), dp(6), dp(16), dp(6))
@@ -323,7 +323,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Værktøj til tags",
-            "Den blå knap nederst i menuen. Se hvad der står på en chip, slå alarmen til eller fra, nulstil den, eller programmér en ny – materialenummeret kan læses med kameraet.",
+            "Den blå knap nederst i menuen. Se hvad der står på en chip, slå alarmen til eller fra, nulstil den, eller programmér en ny – materialenummeret kan læses med kameraet, både som stregkode og som tal.",
         ) {
             fun tile(l: String, v: View) = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -350,12 +350,13 @@ class GuideActivity : ComponentActivity() {
             ).apply { layoutParams = FrameLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT) }
             val check = FrameLayout(this).apply {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.green) }
-                addView(icon(R.drawable.ic_check, Color.WHITE, 48), FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+                addView(icon(R.drawable.ic_check, Color.WHITE, 32), FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER))
                 alpha = 0f
             }
             val box = FrameLayout(this).apply {
                 addView(c)
-                addView(check, FrameLayout.LayoutParams(dp(90), dp(90), Gravity.CENTER))
+                // Fluebenet står i hjørnet, så det ikke dækker nummeret
+                addView(check, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
             }
             loop(2600) { n ->
                 // Skiftevis: alarmen slås fra (grønt flueben), og til igen
@@ -430,22 +431,57 @@ class GuideActivity : ComponentActivity() {
             pad
         },
         Page(
-            "Søgninger i Cicero",
-            "Fanerækken øverst kan swipes, så du når alle faner. Nulstil og Søg ligger altid som en lille pille nederst – også når du ruller ned i resultaterne.",
+            "Faner kan swipes",
+            "Fanerækken øverst i Cicero kan swipes. I stedet for at trykke på pilene skubber du bare fanerne til siden med fingeren.",
         ) {
             val tabs = hrow(
                 text("LÅNERE", 13f, tc.blue, true), text("MELLEMVÆRENDE", 13f, tc.fg, true),
-                text("BESKEDER", 13f, tc.fg, true), text("RESERVATIONER", 13f, tc.fg, true), gap = 22,
-            )
-            val tabClip = FrameLayout(this).apply {
-                clipChildren = true
-                addView(tabs, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
-                layoutParams = LinearLayout.LayoutParams(dp(280), dp(36))
+                text("BESKEDER", 13f, tc.fg, true), text("MEDLEMSKAB", 13f, tc.fg, true), gap = 22,
+            ).apply { setPadding(dp(12), 0, dp(12), 0) }
+            val finger = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.fg) }
+                alpha = 0f
             }
+            val strip = FrameLayout(this).apply {
+                clipChildren = true
+                background = rounded(tc.card, 12)
+                addView(tabs, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+                addView(finger, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = dp(30) })
+                layoutParams = FrameLayout.LayoutParams(dp(280), dp(52))
+            }
+            loop(2400) { n ->
+                val left = n % 2 == 0
+                // Fingeren lægges på, skubber fanerne, og løftes igen
+                finger.translationX = if (left) 0f else -dpf(150f)
+                finger.animate().alpha(0.3f).setStartDelay(0).setDuration(150).withEndAction {
+                    finger.animate().translationX(if (left) -dpf(150f) else 0f).setDuration(700).withEndAction {
+                        finger.animate().alpha(0f).setDuration(200).start()
+                    }.start()
+                    tabs.animate().translationX(if (left) -dpf(150f) else 0f).setDuration(700).start()
+                }.start()
+            }
+            strip
+        },
+        Page(
+            "Nulstil og Søg altid ved hånden",
+            "Under søgninger ligger Nulstil og Søg som en lille pille nederst – også når du ruller ned i resultaterne.",
+        ) {
             fun field(t: String) = text(t, 13f, tc.sub).apply {
                 background = rounded(tc.card, 6, tc.key)
                 setPadding(dp(10), dp(8), dp(10), dp(8))
-                layoutParams = LinearLayout.LayoutParams(dp(260), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+                layoutParams = LinearLayout.LayoutParams(dp(240), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+            }
+            fun result() = View(this).apply {
+                background = rounded(tc.card, 6)
+                layoutParams = LinearLayout.LayoutParams(dp(240), dp(30)).apply { topMargin = dp(6) }
+            }
+            val content = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(field("Låner"))
+                addView(field("Navn"))
+                addView(field("Telefon"))
+                repeat(5) { addView(result()) }
             }
             val pillRow = hrow(
                 text("Nulstil", 13f, tc.fg, true),
@@ -456,23 +492,19 @@ class GuideActivity : ComponentActivity() {
                 elevation = dpf(4f)
                 setPadding(dp(16), dp(6), dp(8), dp(6))
             }
-            val form = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                background = rounded(tc.tile, 12)
-                setPadding(dp(10), dp(4), dp(10), dp(48))
-                addView(tabClip)
-                addView(field("Låner"))
-                addView(field("Navn"))
-                addView(field("Telefon"))
-            }
             val box = FrameLayout(this).apply {
-                addView(form)
+                clipChildren = true
+                clipToOutline = true
+                background = rounded(tc.tile, 12)
+                setPadding(dp(10), dp(4), dp(10), 0)
+                addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
                 addView(pillRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                    bottomMargin = dp(8)
+                    bottomMargin = dp(10)
                 })
+                layoutParams = FrameLayout.LayoutParams(dp(260), dp(200))
             }
-            loop(2200) { n -> tabs.animate().translationX(if (n % 2 == 1) -dpf(150f) else 0f).setDuration(700).start() }
+            // Siden ruller op og ned – pillen bliver liggende
+            loop(2400) { n -> content.animate().translationY(if (n % 2 == 1) -dpf(140f) else 0f).setDuration(1100).start() }
             box
         },
         Page(
@@ -514,7 +546,9 @@ class GuideActivity : ComponentActivity() {
                 gravity = Gravity.CENTER_HORIZONTAL
                 background = rounded(tc.card, 16)
                 setPadding(dp(40), dp(28), dp(40), dp(28))
-                addView(icon(R.drawable.ic_lock, tc.fg, 56))
+                val logo = LockLogo(this@GuideActivity).apply { setColors(body = tc.fg, shackle = tc.sub, cutout = tc.card) }
+                addView(logo, LinearLayout.LayoutParams(dp(78), dp(114)))
+                loop(1800) { n -> if (n % 2 == 1) logo.animateOpen() else logo.animateClose() }
                 addView(text("NFClibra er låst", 18f, tc.fg, true).apply { setPadding(0, dp(12), 0, 0) })
                 addView(text("Tryk for at låse op", 14f, tc.sub).apply { setPadding(0, dp(4), 0, 0) })
             }

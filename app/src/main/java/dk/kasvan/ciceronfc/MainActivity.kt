@@ -131,7 +131,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private val unlockRequestCode = 43
     private lateinit var lockView: LinearLayout
     private lateinit var pinPad: PinPad
-    private lateinit var lockIcon: ImageView
+    private lateinit var lockIcon: LockLogo
     private lateinit var lockTitle: TextView
     private lateinit var lockHint: TextView
     private var authInProgress = false
@@ -348,7 +348,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---------- Lås ----------
 
     private fun buildLockView(): LinearLayout {
-        lockIcon = ImageView(this).apply { setImageResource(R.drawable.ic_lock) }
+        lockIcon = LockLogo(this)
         lockTitle = TextView(this).apply {
             text = "NFClibra er låst"
             textSize = 18f
@@ -367,8 +367,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             gravity = Gravity.CENTER
             isClickable = true // tryk må ikke gå igennem til Cicero
             visibility = View.GONE
-            setOnClickListener { authenticate() }
-            addView(lockIcon, LinearLayout.LayoutParams(dp(56), dp(56)))
+            setOnClickListener { if (Hub.locked) authenticate() }
+            addView(lockIcon, LinearLayout.LayoutParams(dp(104), dp(152)))
             addView(lockTitle)
             addView(lockHint)
         }
@@ -494,7 +494,20 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun refreshLockUi() {
         val locked = Hub.locked
-        lockView.visibility = if (locked) View.VISIBLE else View.GONE
+        if (locked) {
+            lockView.animate().cancel()
+            lockView.alpha = 1f
+            lockIcon.reset()
+            lockView.visibility = View.VISIBLE
+        } else if (lockView.visibility == View.VISIBLE && lockView.alpha == 1f) {
+            // Låst op: bøjlen springer fri, og låseskærmen toner ud
+            lockIcon.animateOpen()
+            lockView.animate().alpha(0f).setStartDelay(150).setDuration(200).withEndAction {
+                if (!Hub.locked) lockView.visibility = View.GONE
+                lockView.alpha = 1f
+                lockIcon.reset()
+            }.start()
+        }
         // Cicero skjules helt bag låsen – også for skærmlæser og tastatur
         root.visibility = if (locked) View.INVISIBLE else View.VISIBLE
         root.importantForAccessibility =
@@ -668,7 +681,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         logView.setTextColor(pal.logText)
         lockView.setBackgroundColor(pal.bar)
         pinPad.setColors(bg = pal.bar, text = pal.text, sub = pal.sub, key = pal.offCircle, blue = pal.blue)
-        lockIcon.imageTintList = ColorStateList.valueOf(pal.text)
+        lockIcon.setColors(body = pal.text, shackle = pal.sub, cutout = pal.bar)
         lockTitle.setTextColor(pal.text)
         lockHint.setTextColor(pal.sub)
         logScroll.setBackgroundColor(pal.logBg)
@@ -742,7 +755,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     /**
-     * Menuen ⋮: en liste i Ciceros farver og nederst en knap til Værktøj til tags (adskilt fra listen,
+     * Menuen (tandhjulet): en liste i Ciceros farver og nederst en knap til Værktøj til tags (adskilt fra listen,
      * så den ikke rammes ved en fejl). Lukker ved tryk udenfor, og når app'en låser.
      */
     private fun showMenu(anchor: View) {
