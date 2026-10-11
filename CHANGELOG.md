@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Guiden: Værktøj til tags vises med det hele (også programmering og kamera) og spiller en læsning, alarm fra og kameraet. Swipe-siden ligner Ciceros fanebjælke og bliver inden for skærmen. Pille-siden viser en rigtig søgning med resultater, der ruller, og "til toppen"-knappen. Tegninger, der er for store, gøres mindre i stedet for at blive skåret af.
+- **0.1.59** – Guiden: Værktøj til tags vises med det hele (også programmering og kamera) og spiller en læsning, alarm fra og kameraet. Swipe-siden ligner Ciceros fanebjælke og bliver inden for skærmen. Pille-siden viser en rigtig søgning med resultater, der ruller, og "til toppen"-knappen. Tegninger, der er for store, gøres mindre i stedet for at blive skåret af.
 - **0.1.58** – Låseskærmen viser NFClibras logo med en hængelås i et hul i hjørnet; bøjlen springer op, når du låser op. Guiden: swipe-faner og Nulstil/Søg-pillen har fået hver sin side, værktøjet nævner at kameraet læser både stregkode og tal, og menu-siden er rettet.
 - **0.1.57** – Guiden: ny rækkefølge (pinkode-kontakten før tastaturet), ny side om at bruge NFClibra kun som RFID-læser, en afsluttende hilsen, og teksten på låsesiden bliver ikke længere skåret af.
 - **0.1.56** – Rundvisningen er erstattet af en guide med små animerede tegninger: pillen, menuen, Værktøj til tags, pinkode-tastaturet, pinkode-kontakten i Udlån, søgninger i Cicero og låsen. Vises første gang og ligger i menuen under Guide. Tipsene i Cicero er fjernet.
