@@ -497,22 +497,29 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun refreshLockUi() {
         val locked = Hub.locked
+        val animating = !locked && lockView.visibility == View.VISIBLE && lockView.alpha == 1f
         if (locked) {
             lockView.animate().cancel()
             lockView.alpha = 1f
             lockIcon.reset()
             lockView.visibility = View.VISIBLE
-        } else if (lockView.visibility == View.VISIBLE && lockView.alpha == 1f) {
-            // Låst op: bøjlen springer fri, og låseskærmen toner ud
-            lockIcon.animateOpen()
-            lockView.animate().alpha(0f).setStartDelay(260).setDuration(320).withEndAction {
-                if (!Hub.locked) lockView.visibility = View.GONE
-                lockView.alpha = 1f
-                lockIcon.reset()
-            }.start()
+        } else if (animating) {
+            // Låst op: først springer bøjlen fri, mens Cicero stadig er skjult. Derefter kommer Cicero frem
+            // bag låsen, og låseskærmen toner ud. Første gang Cicero tegnes, tager det telefonen et øjeblik –
+            // det sker nu, mens låseskærmen dækker, så bøjlen ikke hakker.
+            lockIcon.animateOpen {
+                if (Hub.locked) return@animateOpen
+                root.visibility = View.VISIBLE
+                lockView.animate().alpha(0f).setStartDelay(40).setDuration(320).withEndAction {
+                    if (!Hub.locked) lockView.visibility = View.GONE
+                    lockView.alpha = 1f
+                    lockIcon.reset()
+                    if (!Hub.locked) maybeShowWhatsNew()
+                }.start()
+            }
         }
         // Cicero skjules helt bag låsen – også for skærmlæser og tastatur
-        root.visibility = if (locked) View.INVISIBLE else View.VISIBLE
+        if (!animating) root.visibility = if (locked) View.INVISIBLE else View.VISIBLE
         root.importantForAccessibility =
             if (locked) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         if (locked) {
@@ -524,7 +531,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            maybeShowWhatsNew()
+            if (!animating) maybeShowWhatsNew()
         }
     }
 
