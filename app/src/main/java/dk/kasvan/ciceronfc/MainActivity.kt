@@ -120,6 +120,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private lateinit var logScroll: ScrollView
     private lateinit var logView: TextView
     private lateinit var root: LinearLayout
+    private lateinit var container: FrameLayout
+    private var activeTour: Tour? = null
     private lateinit var divider: View
     private val handler = Handler(Looper.getMainLooper())
     private var resumed = false
@@ -324,7 +326,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         )
         lockView = buildLockView()
         pinPad = PinPad(this, ::dp).apply {
-            onOk = { pin -> fillPin(pin) }
+            onOk = { pin -> if (!pinDemo) fillPin(pin) }
             onCancel = { LogBuf.add("Pinkode annulleret") }
             onKeyboard = { useNormalKeyboardForPin() }
             onFlip = { toggleFlip() }
@@ -334,7 +336,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
             setBig(prefs().getBoolean(PREF_PIN_BIG, false))
         }
-        val container = FrameLayout(this).apply {
+        container = FrameLayout(this).apply {
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             // Pinkode-tastaturet ligger over Cicero, men under låsen
             addView(pinPad.view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -406,6 +408,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         Hub.locked = true
         userUnlocked = false
         Hub.onLocked()
+        activeTour?.finish(callDone = false)
         pinPad.hide()
         closePopups()
         refreshLockUi()
@@ -516,19 +519,125 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val prefs = prefs()
         val current = Updater.currentCode(this)
         val seen = prefs.getLong("seenVersion", -1L)
-        if (seen >= current) return
+        if (seen >= current) { maybeOfferTour(); return }
         prefs.edit().putLong("seenVersion", current).apply()
         val all = Changelog.entries(this)
         // Har man sprunget versioner over, vises alle siden sidst; ellers kun den nyeste
         val news = all.filter { it.code <= current && (if (seen < 0) it.code == current else it.code > seen) }
-        if (news.isEmpty()) return
+        if (news.isEmpty()) { maybeOfferTour(); return }
         val msg = if (news.size == 1) news[0].text else news.joinToString("\n\n") { "${it.name}: ${it.text}" }
         AlertDialog.Builder(this)
             .setTitle("Nyt i NFClibra ${BuildConfigInfo.version(this)}")
             .setMessage(msg)
             .setPositiveButton("OK", null)
             .setNeutralButton("Alle ændringer") { _, _ -> showChangelog() }
+            .setOnDismissListener { maybeOfferTour() }
             .track()
+    }
+
+    // ---------- Rundvisning og tips ----------
+
+    @Volatile private var pinDemo = false
+
+    /** Et elements placering i forhold til skærmen under rundvisningen */
+    private fun rectOf(v: View): android.graphics.Rect? {
+        if (!v.isShown || v.width == 0) return null
+        val a = IntArray(2); val c = IntArray(2)
+        v.getLocationInWindow(a); container.getLocationInWindow(c)
+        return android.graphics.Rect(a[0] - c[0], a[1] - c[1], a[0] - c[0] + v.width, a[1] - c[1] + v.height)
+    }
+
+    private fun showTip(key: String, x: Double, y: Double, w: Double, h: Double) {
+        if (Hub.locked || activeTour?.isShowing == true) return
+        val (title, text) = when (key) {
+            "tabs" -> "Swipe fanerne" to "Fanerækken kan nu swipes til siden, så du kan nå alle faner."
+            "pintoggle" -> "Pinkode ved udlån" to "Kontakten slår Ciceros krav om pinkode ved udlån til og fra med ét tryk."
+            "searchpill" -> "Nulstil og Søg" to "Knapperne ligger altid her nederst – også når du ruller ned i resultaterne."
+            else -> return
+        }
+        val target = {
+            val a = IntArray(2); val c = IntArray(2)
+            web.getLocationInWindow(a); container.getLocationInWindow(c)
+            val l = a[0] - c[0] + x.toInt(); val t = a[1] - c[1] + y.toInt()
+            android.graphics.Rect(l, t, l + w.toInt(), t + h.toInt())
+        }
+        newTour().start(listOf(Tour.Step(title, text, target)), light = true)
+    }
+
+    private fun newTour() = Tour(this, container, ::dp, pal.logBg, pal.text, pal.sub, pal.blue).also { activeTour = it }
+
+    /** Første gang: nye brugere får rundvisningen; dem, der opdaterer, bliver spurgt én gang */
+    private fun maybeOfferTour() {
+        val p = prefs()
+        if (p.getBoolean("tourOffered", false) || Hub.locked) return
+        p.edit().putBoolean("tourOffered", true).apply()
+        val info = try { packageManager.getPackageInfo(packageName, 0) } catch (_: Exception) { null }
+        val fresh = info != null && info.firstInstallTime == info.lastUpdateTime
+        if (fresh) {
+            handler.postDelayed({ if (!Hub.locked) startTour() }, 600)
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("Rundvisning")
+                .setMessage("Vil du se en kort rundvisning af NFClibra? Du kan altid finde den i menuen under Rundvisning.")
+                .setPositiveButton("Vis") { _, _ -> startTour() }
+                .setNegativeButton("Ikke nu", null)
+                .track()
+        }
+    }
+
+    private fun startTour() {
+        if (Hub.locked) return
+        // Tipsene inde i Cicero vises igen efter en rundvisning
+        prefs().edit().apply { TIP_KEYS.forEach { remove("tip_$it") } }.apply()
+        web.evaluateJavascript("window.__cnfcTips = {};", null)
+        LogBuf.add("Rundvisning startet")
+        val bar = pill.parent as View
+        newTour().start(listOf(
+            Tour.Step(
+                "Velkommen til NFClibra",
+                "NFClibra gør telefonens NFC til RFID-læser i Cicero Mobile. Her er en kort rundvisning – du kan springe over når som helst.",
+            ),
+            Tour.Step(
+                "RFID-ikonet",
+                "Viser, om Cicero lytter efter bøger. Er det gråt, så slå RFID til i Cicero (fx i Udlån eller Aflevering).",
+                target = { rectOf(rfidIcon) },
+            ),
+            Tour.Step(
+                "Bjælken",
+                "Når en bog læses, vises en lille pille her: grøn = alarm fra (udlån), orange = alarm til (aflevering), rød = fejl, grå = læst. Telefonen vibrerer også.",
+                target = { rectOf(pill) ?: rectOf(bar) },
+            ),
+            Tour.Step(
+                "Menuen",
+                "Tandhjulet åbner menuen: log, genindlæs, lås nu, opdatering og ændringer.",
+                target = { rectOf(menuBtn) },
+            ),
+            Tour.Step(
+                "Værktøj til tags",
+                "Nederst i menuen ligger den blå knap Værktøj til tags: se hvad der står på en chip, slå alarmen til eller fra, nulstil, eller programmér en ny chip med kameraet.",
+                target = { rectOf(menuBtn) },
+            ),
+            Tour.Step(
+                "Indstillinger",
+                "Under Indstillinger i menuen slår du lyd, pinkode-tastaturet og app'ens tilpasninger af Cicero til og fra.",
+                target = { rectOf(menuBtn) },
+            ),
+            Tour.Step(
+                "Pinkode-tastaturet",
+                "Når en låner skal taste pinkode i Cicero, vises dette store tastatur. Dine knapper ligger nederst: Vend drejer cifrene mod låneren, Stor giver ekstra store taster.",
+                target = { rectOf(pinPad.staffBarView) },
+                onEnter = { pinDemo = true; pinPad.show(prefs().getBoolean(PREF_PIN_FLIP, false)) },
+                onLeave = { if (pinDemo) { pinPad.hide(); pinDemo = false } },
+            ),
+            Tour.Step(
+                "Låsen",
+                "App'en låser sig efter 5 minutter uden brug og låses op med fingeraftryk eller pinkode. Du kan også låse med det samme fra menuen.",
+            ),
+            Tour.Step(
+                "Tips i Cicero",
+                "Det, NFClibra ændrer inde i Cicero – fx faner der kan swipes, pinkode-kontakten i Udlån og Nulstil/Søg nederst – får et lille tip første gang, du møder det.",
+            ),
+        )) { LogBuf.add("Rundvisning afsluttet") }
     }
 
     private fun showChangelog() {
@@ -756,6 +865,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         item("Indstillinger", R.drawable.ic_menu_settings) { showSettings() }
         item("Søg efter opdatering", R.drawable.ic_menu_update) { checkForUpdateNow() }
         item("Ændringer", R.drawable.ic_menu_changes) { showChangelog() }
+        item("Rundvisning", R.drawable.ic_menu_help) { startTour() }
         item("Om NFClibra", R.drawable.ic_menu_info) { showAbout() }
         col.addView(View(this).apply { setBackgroundColor(pal.line) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply { topMargin = dp(6); bottomMargin = dp(10) })
@@ -960,6 +1070,17 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         fun pinSetting(msg: String) {
             if (pageHost != CICERO_HOST) return
             LogBuf.add("Pinkode-krav: ${scrub(msg)}")
+        }
+
+        /** Et tip ved noget, app'en har ændret i Cicero – vises én gang. Svarer true, når det er klaret. */
+        @JavascriptInterface
+        fun tip(key: String, x: Double, y: Double, w: Double, h: Double): Boolean {
+            if (pageHost != CICERO_HOST || key !in TIP_KEYS) return true
+            if (prefs().getBoolean("tip_$key", false)) return true
+            if (Hub.locked || pinPad.isShowing || activeTour?.isShowing == true) return false
+            prefs().edit().putBoolean("tip_$key", true).apply()
+            runOnUiThread { showTip(key, x, y, w, h) }
+            return true
         }
 
         @JavascriptInterface
@@ -1662,7 +1783,9 @@ private val STICKY_BUTTONS_JS = """
     if (!show) return;
     refresh(bar);
     bar.pill.style.bottom = Math.round(innerHeight - navTop(bar.pill) + 8) + 'px';
+    cnfcTip('searchpill', bar.pill);
   }
+  ${TIP_FN}
   sync();
   setInterval(sync, 400);
   addEventListener('resize', sync);
@@ -1674,8 +1797,25 @@ private val STICKY_BUTTONS_JS = """
  * Her får den almindelig rulning, så den følger fingeren; pilene skjules.
  * Valgt fane rulles frem, når man trykker på den. Rammes navnene ikke, er alt som før.
  */
+private val TIP_KEYS = listOf("tabs", "pintoggle", "searchpill")
+
+/** Fælles hjælper til tips: kalder app'en én gang pr. tip med elementets placering i skærmpunkter */
+private const val TIP_FN = "function cnfcTip(key, el) {" +
+    "  window.__cnfcTips = window.__cnfcTips || {};" +
+    "  if (window.__cnfcTips[key] || !el || el.offsetParent === null) return;" +
+    "  var r = el.getBoundingClientRect(), d = window.devicePixelRatio || 1;" +
+    "  if (r.width < 4 || r.bottom < 0 || r.top > innerHeight) return;" +
+    "  try { if (CiceroNFC.tip(key, r.left * d, r.top * d, r.width * d, r.height * d)) window.__cnfcTips[key] = 1; } catch (e) {}" +
+    "}"
+
 private val SWIPE_TABS_JS = """
 (function () {
+  ${TIP_FN}
+  // Tip første gang, der er flere faner, end der kan ses
+  if (!window.__cnfcTabTip) window.__cnfcTabTip = setInterval(function () {
+    var c = document.querySelectorAll('.mat-mdc-tab-label-container, .mat-tab-label-container, .mat-mdc-tab-link-container, .mat-tab-link-container');
+    for (var i = 0; i < c.length; i++) if (c[i].offsetParent !== null && c[i].scrollWidth > c[i].clientWidth + 8) { cnfcTip('tabs', c[i]); break; }
+  }, 1500);
   if (document.getElementById('cnfc-swipe')) return;
   var st = document.createElement('style');
   st.id = 'cnfc-swipe';
@@ -1899,7 +2039,9 @@ private val PIN_TOGGLE_JS = """
     setLook(mine, stored());
     mine.style.opacity = busy ? '0.5' : '';
     place(host, mine);
+    if (!busy) cnfcTip('pintoggle', mine);
   }
+  ${TIP_FN}
   setInterval(function () { if (location.hostname === 'cicero.systematic.com') sync(); }, 800);
 })();
 """

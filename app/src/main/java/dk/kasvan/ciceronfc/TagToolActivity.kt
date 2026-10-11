@@ -256,7 +256,10 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             textSize = 22f
             setTextColor(fg)
             setHintTextColor(sub)
-            hint = "Materialenummer"
+            // Hjælpeteksten i almindelig størrelse, så den kan være der; tallene står stort
+            hint = android.text.SpannableString("Materialenummer").apply {
+                setSpan(android.text.style.AbsoluteSizeSpan(16, true), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
             inputType = InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
             background = GradientDrawable().apply { setColor(card); setStroke(dp(1), sub); cornerRadius = dp(10).toFloat() }

@@ -29,6 +29,8 @@ Enhedsindstillinger → RFID scanner:
 
 ## Brug
 
+Første gang viser app'en en kort rundvisning; den kan altid startes igen fra menuen ⚙ → Rundvisning.
+
 Hold bogen mod bagsiden af telefonen:
 
 | Signal | Betyder | Vibration |

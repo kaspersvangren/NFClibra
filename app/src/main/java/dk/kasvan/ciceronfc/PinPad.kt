@@ -76,6 +76,9 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
 
     val isShowing get() = view.visibility == View.VISIBLE
 
+    /** Personalets bjælke (til rundvisningen) */
+    val staffBarView: View get() = staffBar
+
     init {
         box.addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         box.addView(dots, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
