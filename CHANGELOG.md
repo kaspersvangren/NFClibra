@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Værktøj til tags er på én skærm: knapperne på én række, programmering i sit eget kort, teksten nederst er væk, og på små skærme eller med stor skrift gøres det hele lidt mindre, så intet skal rulles.
+- **0.1.53** – Værktøj til tags er på én skærm: knapperne på én række, programmering i sit eget kort, teksten nederst er væk, og på små skærme eller med stor skrift gøres det hele lidt mindre, så intet skal rulles.
 - **0.1.52** – Værktøj til tags hopper ikke længere: felter og knapper står der altid og udfyldes, når en chip læses. Kortere beskeder på én linje.
 - **0.1.51** – Værktøj til tags: knap til at kopiere materialenummeret; en læst chip udfylder feltet "Programmér chip" (markeret) og antal dele; stort grønt flueben eller rødt kryds ved skrivning, alarm og nulstil.
 - **0.1.50** – Kameraet i værktøjet læser kun det, der står inden for rammen (og intet uden for skærmen), og listen følger billedet. Rammen er lidt større.
