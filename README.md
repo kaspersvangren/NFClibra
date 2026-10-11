@@ -29,7 +29,7 @@ Enhedsindstillinger → RFID scanner:
 
 ## Brug
 
-Første gang viser app'en en kort rundvisning; den kan altid startes igen fra menuen ⚙ → Rundvisning.
+Første gang viser app'en en kort guide med tegninger af funktionerne; den ligger altid i menuen ⚙ → Guide.
 
 Hold bogen mod bagsiden af telefonen:
 

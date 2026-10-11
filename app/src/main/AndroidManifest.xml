@@ -46,6 +46,11 @@
             android:windowSoftInputMode="adjustPan" />
 
         <activity
+            android:name=".GuideActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|uiMode|smallestScreenSize"
+            android:exported="false" />
+
+        <activity
             android:name=".ScanActivity"
             android:exported="false" />
 

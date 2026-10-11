@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Rundvisningen er erstattet af en guide med små animerede tegninger: pillen, menuen, Værktøj til tags, pinkode-tastaturet, pinkode-kontakten i Udlån, søgninger i Cicero og låsen. Vises første gang og ligger i menuen under Guide. Tipsene i Cicero er fjernet.
 - **0.1.55** – Nulstil/Søg-pillen kommer igen, når man har været på en anden side i Cicero og vender tilbage til søgningen. Tippet til pillen vises nu.
 - **0.1.54** – Rundvisning: første gang (og fra menuen) viser app'en, hvor tingene er – RFID-ikonet, bjælken, menuen, Værktøj til tags, Indstillinger, pinkode-tastaturet og låsen. Små tips første gang, man møder app'ens ændringer i Cicero. "Materialenummer" i værktøjets felt står nu i almindelig størrelse.
 - **0.1.53** – Værktøj til tags er på én skærm: knapperne på én række, programmering i sit eget kort, teksten nederst er væk, og på små skærme eller med stor skrift gøres det hele lidt mindre, så intet skal rulles.
