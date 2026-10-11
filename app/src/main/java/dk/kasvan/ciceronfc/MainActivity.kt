@@ -1764,6 +1764,9 @@ private val STICKY_BUTTONS_JS = """
   }
   function sync() {
     if (bar && (!bar.row.isConnected || !bar.target.isConnected)) {
+      // Cicero har taget søgekortet ud (fx ved sideskift). Ciceros egen række gøres synlig igen, så den
+      // kan findes og få en ny pille, når kortet kommer tilbage.
+      bar.target.style.display = '';
       bar.pill.remove();
       bar = null;
     }
@@ -1802,7 +1805,7 @@ private val TIP_KEYS = listOf("tabs", "pintoggle", "searchpill")
 /** Fælles hjælper til tips: kalder app'en én gang pr. tip med elementets placering i skærmpunkter */
 private const val TIP_FN = "function cnfcTip(key, el) {" +
     "  window.__cnfcTips = window.__cnfcTips || {};" +
-    "  if (window.__cnfcTips[key] || !el || el.offsetParent === null) return;" +
+    "  if (window.__cnfcTips[key] || !el || !el.getClientRects().length) return;" +
     "  var r = el.getBoundingClientRect(), d = window.devicePixelRatio || 1;" +
     "  if (r.width < 4 || r.bottom < 0 || r.top > innerHeight) return;" +
     "  try { if (CiceroNFC.tip(key, r.left * d, r.top * d, r.width * d, r.height * d)) window.__cnfcTips[key] = 1; } catch (e) {}" +
