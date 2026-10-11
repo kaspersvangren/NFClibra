@@ -37,7 +37,7 @@ class LockLogo(context: Context) : View(context) {
     fun animateOpen(done: (() -> Unit)? = null) {
         anim?.cancel()
         anim = ValueAnimator.ofFloat(open, 1f).apply {
-            duration = 160
+            duration = 240
             interpolator = OvershootInterpolator(3f)
             addUpdateListener { open = it.animatedValue as Float }
             if (done != null) addListener(object : AnimatorListenerAdapter() {

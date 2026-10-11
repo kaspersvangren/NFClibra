@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Låseskærmen står lidt højere, så der er luft til fingeraftryksboksen, og oplåsningen er en anelse roligere.
 - **0.1.60** – Ny version opdages inden for ca. et kvarter (før op til 6 timer), også når app'en står fremme hele dagen. App'en tjekker en lille versionsfil, så mange telefoner på samme net ikke rammer GitHubs grænse.
 - **0.1.59** – Guiden: Værktøj til tags vises med det hele (også programmering og kamera) og spiller en læsning, alarm fra og kameraet. Swipe-siden ligner Ciceros fanebjælke og bliver inden for skærmen. Pille-siden viser en rigtig søgning med resultater, der ruller, og "til toppen"-knappen. Tegninger, der er for store, gøres mindre i stedet for at blive skåret af.
 - **0.1.58** – Låseskærmen viser NFClibras logo med en hængelås i et hul i hjørnet; bøjlen springer op, når du låser op. Guiden: swipe-faner og Nulstil/Søg-pillen har fået hver sin side, værktøjet nævner at kameraet læser både stregkode og tal, og menu-siden er rettet.

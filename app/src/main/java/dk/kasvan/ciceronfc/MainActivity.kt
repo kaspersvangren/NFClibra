@@ -364,13 +364,16 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
             isClickable = true // tryk må ikke gå igennem til Cicero
             visibility = View.GONE
             setOnClickListener { if (Hub.locked) authenticate() }
+            // Lidt over midten (2:3), så der er luft under til telefonens fingeraftryksboks
+            addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 2f))
             addView(lockIcon, LinearLayout.LayoutParams(dp(104), dp(152)))
             addView(lockTitle)
             addView(lockHint)
+            addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 3f))
         }
     }
 
@@ -502,7 +505,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         } else if (lockView.visibility == View.VISIBLE && lockView.alpha == 1f) {
             // Låst op: bøjlen springer fri, og låseskærmen toner ud
             lockIcon.animateOpen()
-            lockView.animate().alpha(0f).setStartDelay(150).setDuration(200).withEndAction {
+            lockView.animate().alpha(0f).setStartDelay(260).setDuration(320).withEndAction {
                 if (!Hub.locked) lockView.visibility = View.GONE
                 lockView.alpha = 1f
                 lockIcon.reset()
