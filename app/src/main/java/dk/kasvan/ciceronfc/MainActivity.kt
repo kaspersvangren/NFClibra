@@ -1994,12 +1994,37 @@ private val SWIPE_TABS_JS = """
     '.mat-mdc-tab-link-container::-webkit-scrollbar, .mat-tab-link-container::-webkit-scrollbar { display: none; }' +
     '.mat-mdc-tab-list, .mat-tab-list, .mat-mdc-tab-links, .mat-tab-links { transform: none !important; }';
   (document.head || document.documentElement).appendChild(st);
+  // Vælges en fane, tegner Cicero bjælken forfra (helt til venstre). Bjælken holdes, hvor den var –
+  // kun hvis det er den samme fanebjælke – og rulles kun lidt, hvis den valgte fane står halvt skjult.
+  var TAB = '.mat-mdc-tab, .mat-mdc-tab-link, .mat-tab-label, .mat-tab-link';
+  var BOX = '.mat-mdc-tab-label-container, .mat-tab-label-container, .mat-mdc-tab-link-container, .mat-tab-link-container';
+  function names(box) {
+    return Array.prototype.map.call(box.querySelectorAll(TAB), function (t) { return t.textContent.trim(); }).join('|');
+  }
+  function same(sig) {
+    return Array.prototype.filter.call(document.querySelectorAll(BOX), function (b) { return names(b) === sig; });
+  }
   document.addEventListener('click', function (e) {
-    var t = e.target && e.target.closest &&
-      e.target.closest('.mat-mdc-tab, .mat-mdc-tab-link, .mat-tab-label, .mat-tab-link');
-    if (t) setTimeout(function () {
-      try { t.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' }); } catch (x) {}
-    }, 50);
+    var t = e.target && e.target.closest && e.target.closest(TAB);
+    var box = t && t.closest(BOX);
+    if (!box) return;
+    var pos = box.scrollLeft, sig = names(box), name = t.textContent.trim();
+    var until = Date.now() + 800;
+    (function keep() {
+      same(sig).forEach(function (b) { if (Math.abs(b.scrollLeft - pos) > 1) b.scrollLeft = pos; });
+      if (Date.now() < until) { requestAnimationFrame(keep); return; }
+      same(sig).forEach(function (b) {
+        var tabs = b.querySelectorAll(TAB);
+        for (var i = 0; i < tabs.length; i++) {
+          if (tabs[i].textContent.trim() !== name) continue;
+          var br = b.getBoundingClientRect(), tr = tabs[i].getBoundingClientRect();
+          if (!br.width) return;
+          var d = tr.left < br.left ? tr.left - br.left - 8 : (tr.right > br.right ? tr.right - br.right + 8 : 0);
+          if (d) try { b.scrollBy({ left: d, behavior: 'smooth' }); } catch (x) { b.scrollLeft += d; }
+          return;
+        }
+      });
+    })();
   }, true);
 })();
 """
