@@ -866,6 +866,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         item("Genindlæs Cicero", R.drawable.ic_menu_reload) { web.reload() }
         if (isDeviceSecure()) item("Lås nu", R.drawable.ic_menu_lock) { lock() }
         item("Indstillinger", R.drawable.ic_menu_settings) { showSettings() }
+        item("Sæt Cicero op", R.drawable.ic_menu_setup) { setUpCicero() }
         item("Søg efter opdatering", R.drawable.ic_menu_update) { checkForUpdateNow() }
         item("Ændringer", R.drawable.ic_menu_changes) { showChangelog() }
         item("Guide", R.drawable.ic_menu_help) { openGuide() }
@@ -1038,6 +1039,48 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     "Port: ${Server.PORT}\n\n" +
                     "Tryk Test forbindelse og gem. Beskeden forsvinder, når Cicero bruger den rigtige adresse.",
             )
+            .setPositiveButton("Ret det for mig") { _, _ -> setUpCicero() }
+            .setNegativeButton("Luk", null)
+            .track()
+    }
+
+    // ---------- Opsætning af Cicero ----------
+
+    private val setupHelp =
+        "Gør det selv i Cicero: tryk på dit navn øverst → Enhedsindstillinger → RFID scanner:\n\n" +
+            "Scanner: Deichman\n" +
+            "Hostname: localhost\n" +
+            "Port: ${Server.PORT}\n" +
+            "Slå RFID-scanner til som standard: til\n\n" +
+            "Tryk Gem."
+
+    /** Udfyld Ciceros RFID-opsætning (Deichman, localhost, port) med de samme klik, som man ellers gør selv */
+    private fun setUpCicero() {
+        if (Hub.locked) return
+        if (Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST || pageLoading) {
+            AlertDialog.Builder(this)
+                .setTitle("Log ind i Cicero først")
+                .setMessage("Opsætningen gemmes i Cicero, så du skal være logget ind. Prøv igen bagefter.")
+                .setPositiveButton("OK", null)
+                .track()
+            return
+        }
+        LogBuf.add("Opsætning af Cicero startet")
+        web.evaluateJavascript(RFID_SETUP_JS.replace("%PORT%", Server.PORT.toString()), null)
+    }
+
+    private fun onSetupResult(msg: String) {
+        LogBuf.add("Opsætning af Cicero: ${scrub(msg)}")
+        val (title, text) = when {
+            msg.startsWith("ok") -> "Cicero er sat op" to
+                "Cicero bruger nu NFClibra som RFID-læser (${msg.removePrefix("ok").trim(' ', ':')}).\n\nGå til Udlån eller Aflever – ikonet øverst til venstre bliver blåt, når Cicero lytter."
+            msg.startsWith("allerede") -> "Cicero er allerede sat op" to
+                "Alt stod rigtigt, så intet er ændret. Lytter Cicero ikke, så prøv at genindlæse Cicero fra menuen."
+            else -> "Kunne ikke sætte Cicero op" to "Det automatiske gik ikke ($msg).\n\n$setupHelp"
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(text)
             .setPositiveButton("OK", null)
             .track()
     }
@@ -1095,6 +1138,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         fun keysBlur() {
             if (pageHost != CICERO_HOST) return
             runOnUiThread { staffKeys.hide() }
+        }
+
+        /** Resultatet af "Sæt Cicero op" (kun en kort status, aldrig indhold fra siden) */
+        @JavascriptInterface
+        fun setupResult(msg: String) {
+            if (pageHost != CICERO_HOST) return
+            val m = msg.take(120)
+            runOnUiThread { onSetupResult(m) }
         }
 
         @JavascriptInterface
@@ -1841,6 +1892,142 @@ private val LANER_KEYS_JS = """
       try { CiceroNFC.keysBlur(); } catch (x) {}
     }, 150);
   }, true);
+})();
+"""
+
+/**
+ * "Sæt Cicero op": åbner Enhedsindstillinger (dit navn øverst → Enhedsindstillinger) og udfylder kun
+ * felterne under "RFID scanner": Scanner = Deichman, Hostname = localhost, Port, og "Slå RFID-scanner til
+ * som standard". Står alt rigtigt, lukkes panelet uden ændringer. Ellers trykkes Gem. Ciceros egne klik.
+ */
+private val RFID_SETUP_JS = """
+(function () {
+  if (window.__cnfcSetupBusy) return;
+  window.__cnfcSetupBusy = true;
+  var PORT = '%PORT%';
+  function report(m) { window.__cnfcSetupBusy = false; try { CiceroNFC.setupResult(m); } catch (e) {} }
+  function visible(el) { return !!(el && el.offsetParent !== null); }
+  function textOf(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitFor(fn, ms) {
+    return new Promise(function (res) {
+      var t0 = Date.now();
+      (function poll() {
+        var v = null;
+        try { v = fn(); } catch (e) {}
+        if (v) return res(v);
+        if (Date.now() - t0 > ms) return res(null);
+        setTimeout(poll, 100);
+      })();
+    });
+  }
+  function heading() {
+    var all = document.querySelectorAll('h1, h2, h3, h4, h5, h6, div, span, p, legend, mat-card-title');
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      if (e.children.length === 0 && textOf(e) === 'RFID scanner' && visible(e)) return e;
+    }
+    return null;
+  }
+  function after(a, b) { return !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }
+  function labelOf(ff) { var l = ff.querySelector('mat-label, label'); return l ? textOf(l).replace(/\s*\*$/, '') : ''; }
+  // Felterne under overskriften "RFID scanner" – det første af hver slags efter overskriften
+  function field(h, name) {
+    var list = document.querySelectorAll('mat-form-field, .mat-mdc-form-field');
+    for (var i = 0; i < list.length; i++) if (after(h, list[i]) && labelOf(list[i]) === name && visible(list[i])) return list[i];
+    return null;
+  }
+  function toggle(h, label) {
+    var list = document.querySelectorAll('mat-slide-toggle, .mat-mdc-slide-toggle');
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].hasAttribute('data-cnfc') && after(h, list[i]) && textOf(list[i]).indexOf(label) >= 0) return list[i];
+    }
+    return null;
+  }
+  function switchOf(t) { return t.querySelector('button[role=switch], input[type=checkbox]') || t; }
+  function isOn(t) {
+    var b = switchOf(t);
+    if (b.getAttribute && b.getAttribute('aria-checked') != null) return b.getAttribute('aria-checked') === 'true';
+    if (b.type === 'checkbox') return b.checked;
+    return t.classList.contains('mat-mdc-slide-toggle-checked') || t.classList.contains('mat-checked');
+  }
+  function setValue(input, v) {
+    var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    input.focus();
+    set.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  }
+  function button(name) {
+    var bs = document.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) if (textOf(bs[i]) === name && visible(bs[i]) && !bs[i].disabled) return bs[i];
+    return null;
+  }
+  function openSettings() {
+    if (heading()) return Promise.resolve(true);
+    var user = sessionStorage.getItem('username') || '';
+    var chip = Array.prototype.slice.call(document.querySelectorAll('button, [role=button], a')).filter(function (b) {
+      var t = textOf(b);
+      return user && t.indexOf(user) >= 0 && t.length < 80 && visible(b);
+    })[0];
+    if (!chip) return Promise.resolve(false);
+    chip.click();
+    return waitFor(function () {
+      var items = document.querySelectorAll('[role=menuitem], .mat-mdc-menu-item, button, a');
+      for (var i = 0; i < items.length; i++) if (textOf(items[i]) === 'Enhedsindstillinger' && visible(items[i])) return items[i];
+      return null;
+    }, 3000).then(function (item) {
+      if (!item) return false;
+      item.click();
+      return waitFor(heading, 4000).then(function (h) { return !!h; });
+    });
+  }
+  var changed = [];
+  openSettings().then(function (ok) {
+    if (!ok) throw 'fandt ikke Enhedsindstillinger';
+    var h = heading();
+    var sc = field(h, 'Scanner');
+    if (!sc) throw 'fandt ikke feltet Scanner';
+    var cur = textOf(sc.querySelector('.mat-mdc-select-value, .mat-select-value') || sc);
+    if (cur.indexOf('Deichman') >= 0) return null;
+    var trigger = sc.querySelector('mat-select, [role=combobox], .mat-mdc-select') || sc;
+    trigger.click();
+    return waitFor(function () {
+      var os = document.querySelectorAll('mat-option, [role=option]');
+      for (var i = 0; i < os.length; i++) if (textOf(os[i]) === 'Deichman' && visible(os[i])) return os[i];
+      return null;
+    }, 3000).then(function (opt) {
+      if (!opt) throw 'fandt ikke Deichman i listen';
+      opt.click();
+      changed.push('scanner');
+      return sleep(500);
+    });
+  }).then(function () {
+    var h = heading();
+    var host = field(h, 'Hostname'), port = field(h, 'Port');
+    if (!host || !port) throw 'fandt ikke Hostname/Port';
+    var hi = host.querySelector('input'), pi = port.querySelector('input');
+    if (!hi || !pi) throw 'fandt ikke Hostname/Port';
+    if (hi.value !== 'localhost') { setValue(hi, 'localhost'); changed.push('hostname'); }
+    if (pi.value !== PORT) { setValue(pi, PORT); changed.push('port'); }
+    var tg = toggle(h, 'RFID-scanner til som standard');
+    if (!tg) throw 'fandt ikke kontakten RFID-scanner til som standard';
+    if (!isOn(tg)) { switchOf(tg).click(); changed.push('til som standard'); }
+    return sleep(300);
+  }).then(function () {
+    if (!changed.length) {
+      var close = button('Annuller');
+      if (close) close.click();
+      return report('allerede');
+    }
+    return waitFor(function () { return button('Gem'); }, 2000).then(function (gem) {
+      if (!gem) throw 'fandt ikke Gem';
+      gem.click();
+      return sleep(500).then(function () { report('ok: ' + changed.join(', ')); });
+    });
+  }).catch(function (e) { report(typeof e === 'string' ? e : 'fejl'); });
 })();
 """
 

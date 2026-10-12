@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Nyt i menuen: "Sæt Cicero op" udfylder Ciceros RFID-opsætning (Deichman, localhost, 1667, til som standard) og gemmer. Findes også som "Ret det for mig" ved RFID-fejl. Lykkes det ikke, vises vejledningen.
 - **0.1.68** – App'en låser ikke længere, mens man læser eller ruller i en dialog (fx ændringslisten) eller bruger menuen – det tæller nu som brug.
 - **0.1.67** – Låseskærmen kan ikke længere blive hængende efter oplåsning: den fjernes under alle omstændigheder efter et sekund, og et tryk fjerner den med det samme. Nulstil/Søg-pillen lægger sig over Ciceros svævende knapper (fx Overfør til IMS-listesystem) i stedet for at dække dem.
 - **0.1.66** – Fanebjælken bliver stående, hvor man har swipet den hen, når man vælger en fane (før sprang den tilbage og fløj hen til fanen).

@@ -27,6 +27,8 @@ Enhedsindstillinger → RFID scanner:
 - Port: **1667**
 - Slå **"RFID-scanner til som standard"** til
 
+App'en kan gøre det selv: menuen ⚙ → **Sæt Cicero op** (eller "Ret det for mig" ved den røde RFID-fejl). Den åbner Enhedsindstillinger, udfylder kun felterne under RFID scanner og trykker Gem.
+
 ## Brug
 
 Første gang viser app'en en kort guide med tegninger af funktionerne; den ligger altid i menuen ⚙ → Guide.
