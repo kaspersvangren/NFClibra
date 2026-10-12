@@ -1757,8 +1757,9 @@ private val LANER_KEYS_JS = """
       var name = labelOf(el).replace(/\s+/g, ' ').trim().slice(0, 40);
       var hint = name.toLowerCase();
       if (/pin/.test(hint)) return;
-      if (/nummer|nr\b|tlf|telefon|mobil|cpr|kort|andet|fax|kode/.test(hint) || el.type === 'number' ||
-          el.getAttribute('inputmode') === 'numeric' || el.getAttribute('inputmode') === 'tel') {
+      // Felter, der allerede får taltastatur fra Cicero (type number/tel, inputmode), nævnes ikke
+      if (el.type === 'number' || /^(numeric|decimal|tel)$/.test(el.getAttribute('inputmode') || '')) return;
+      if (/nummer|nr\b|tlf|telefon|mobil|cpr|kort|andet|fax|kode/.test(hint)) {
         var key = name + '|' + el.type;
         if (!reported[key]) {
           reported[key] = true;
@@ -1772,12 +1773,23 @@ private val LANER_KEYS_JS = """
     el.setAttribute('inputmode', 'none');
     try { CiceroNFC.keysFocus(k); } catch (x) {}
   }, true);
+  // Tryk i et felt, der allerede har fokus (fx efter "skjul"): vis tastaturet igen
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    if (el !== document.activeElement || el.__cnfcAbc) return;
+    var k = kind(el);
+    if (!k) return;
+    window.__cnfcKeysEl = el;
+    try { CiceroNFC.keysFocus(k); } catch (x) {}
+  }, true);
   document.addEventListener('focusout', function (e) {
     var el = e.target;
     if (el !== window.__cnfcKeysEl) return;
     setTimeout(function () {
       if (document.activeElement === el) return;
       if (el.__cnfcAbc) { el.__cnfcAbc = false; el.setAttribute('inputmode', 'none'); }
+      // Gået videre til et andet felt med tastaturet: det felt har allerede bedt om det
+      if (window.__cnfcKeysEl !== el || kind(document.activeElement)) return;
       try { CiceroNFC.keysBlur(); } catch (x) {}
     }, 150);
   }, true);
