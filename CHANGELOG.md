@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Feltet "Låner" (fx i Udlån) får et lille tastatur med tal, C, slet og Enter i stedet for telefonens almindelige. ABC giver det almindelige tastatur. Hører under Tilpasninger af Cicero.
+- **0.1.63** – Feltet "Låner" (fx i Udlån) får et lille tastatur med tal, C, slet og Enter i stedet for telefonens almindelige. ABC giver det almindelige tastatur. Hører under Tilpasninger af Cicero.
 - **0.1.62** – Oplåsningen hakker ikke længere ved opstart: bøjlen springer op først, og Cicero kommer frem bagefter.
 - **0.1.61** – Låseskærmen står lidt højere, så der er luft til fingeraftryksboksen, og oplåsningen er en anelse roligere.
 - **0.1.60** – Ny version opdages inden for ca. et kvarter (før op til 6 timer), også når app'en står fremme hele dagen. App'en tjekker en lille versionsfil, så mange telefoner på samme net ikke rammer GitHubs grænse.
