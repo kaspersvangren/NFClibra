@@ -1973,16 +1973,9 @@ private val RFID_SETUP_JS = """
       return user && t.indexOf(user) >= 0 && t.length < 80 && visible(b);
     })[0];
     if (!chip) return Promise.resolve(false);
+    // Et tryk på navnet åbner Enhedsindstillinger direkte
     chip.click();
-    return waitFor(function () {
-      var items = document.querySelectorAll('[role=menuitem], .mat-mdc-menu-item, button, a');
-      for (var i = 0; i < items.length; i++) if (textOf(items[i]) === 'Enhedsindstillinger' && visible(items[i])) return items[i];
-      return null;
-    }, 3000).then(function (item) {
-      if (!item) return false;
-      item.click();
-      return waitFor(heading, 4000).then(function (h) { return !!h; });
-    });
+    return waitFor(heading, 4000).then(function (h) { return !!h; });
   }
   var changed = [];
   openSettings().then(function (ok) {
@@ -2399,19 +2392,9 @@ private val PIN_TOGGLE_JS = """
       return user && t.indexOf(user) >= 0 && t.length < 80 && visible(b);
     })[0];
     if (!chip) return Promise.resolve(done('fandt ikke brugermenuen'));
+    // Et tryk på navnet åbner Enhedsindstillinger direkte
     chip.click();
-    return waitFor(function () {
-      var tg = findToggle('Pinkode påkrævet');
-      if (tg) return { tg: tg };
-      var items = document.querySelectorAll('[role=menuitem], .mat-mdc-menu-item, button, a');
-      for (var i = 0; i < items.length; i++) if (textOf(items[i]) === 'Enhedsindstillinger' && visible(items[i])) return { item: items[i] };
-      return null;
-    }, 3000).then(function (r) {
-      if (!r) return null;
-      if (r.tg) return r.tg;
-      r.item.click();
-      return waitFor(function () { return findToggle('Pinkode påkrævet'); }, 3000);
-    }).then(function (tg) {
+    return waitFor(function () { return findToggle('Pinkode påkrævet'); }, 4000).then(function (tg) {
       if (!tg) return done('fandt ikke Enhedsindstillinger');
       // Står den allerede rigtigt, skiftes der frem og tilbage, så Gem kan trykkes
       var clicks = isOn(tg) === want ? 2 : 1;
