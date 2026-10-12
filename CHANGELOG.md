@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Tastaturet bliver, når man hopper fra ét felt med tastatur til et andet (fx Låner → Telefon), og et tryk i feltet henter det frem igen, hvis det er skjult. Felter, der allerede får taltastatur fra Cicero, nævnes ikke længere i loggen.
+- **0.1.65** – Tastaturet bliver, når man hopper fra ét felt med tastatur til et andet (fx Låner → Telefon), og et tryk i feltet henter det frem igen, hvis det er skjult. Felter, der allerede får taltastatur fra Cicero, nævnes ikke længere i loggen.
 - **0.1.64** – Tastaturet kommer nu også i telefonfelter (med +) og i Materialenummer, hvor kameraet fra værktøjet læser nummeret – stregkode eller tal – og taster det ind. Felter med tal i navnet, der ikke får tastaturet, nævnes i loggen.
 - **0.1.63** – Feltet "Låner" (fx i Udlån) får et lille tastatur med tal, C, slet og Enter i stedet for telefonens almindelige. ABC giver det almindelige tastatur. Hører under Tilpasninger af Cicero.
 - **0.1.62** – Oplåsningen hakker ikke længere ved opstart: bøjlen springer op først, og Cicero kommer frem bagefter.
