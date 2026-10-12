@@ -408,7 +408,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun AlertDialog.Builder.track(): AlertDialog {
         dialogs.removeAll { !it.isShowing }
-        return show().also { dialogs += it }
+        return show().also { d ->
+            dialogs += d
+            // Tryk og rul i dialogen tæller som brug, så app'en ikke låser midt i fx ændringslisten
+            d.window?.let { w ->
+                val orig = w.callback
+                w.callback = object : android.view.Window.Callback by orig {
+                    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                        if (!Hub.locked) Hub.lastActivity = SystemClock.elapsedRealtime()
+                        return orig.dispatchTouchEvent(event)
+                    }
+                }
+            }
+        }
     }
 
     private fun closePopups() {
@@ -823,6 +835,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setBackgroundDrawable(GradientDrawable().apply { setColor(pal.logBg); cornerRadius = dp(12).toFloat() })
             elevation = dp(8).toFloat()
             setOnDismissListener { if (openMenu === this) openMenu = null }
+            // Tryk i menuen tæller også som brug
+            setTouchInterceptor { _, _ ->
+                if (!Hub.locked) Hub.lastActivity = SystemClock.elapsedRealtime()
+                false
+            }
         }
         val ripple = android.util.TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }.resourceId
         // Grå ikoner, så teksten stadig er det, man ser først
