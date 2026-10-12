@@ -130,6 +130,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var pendingCamera: PermissionRequest? = null
     private val cameraRequestCode = 42
     private val unlockRequestCode = 43
+    private val scanRequestCode = 44
     private lateinit var lockView: LinearLayout
     private lateinit var pinPad: PinPad
     private lateinit var staffKeys: StaffKeys
@@ -656,6 +657,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == scanRequestCode) {
+            if (resultCode == RESULT_OK) data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let { onFieldScanned(it) }
+            return
+        }
         if (requestCode != unlockRequestCode) return
         authEnded()
         if (resultCode == RESULT_OK) unlock() else openToolAfterUnlock = false
@@ -1022,11 +1027,20 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             LogBuf.add("Pinkode-krav: ${scrub(msg)}")
         }
 
-        /** Feltet "Låner" fik eller mistede fokus – vis/skjul Låner-tastaturet. Modtager ingen data fra siden. */
+        /**
+         * Et felt til Låner, telefonnummer eller Materialenummer fik fokus – vis tastaturet.
+         * Modtager kun feltets slags (aldrig indholdet).
+         */
         @JavascriptInterface
-        fun keysFocus() {
+        fun keysFocus(kind: String) {
             if (pageHost != CICERO_HOST) return
-            runOnUiThread { onLaanerFocused() }
+            val mode = when (kind) {
+                "laaner" -> StaffKeys.Mode.LAANER
+                "phone" -> StaffKeys.Mode.PHONE
+                "item" -> StaffKeys.Mode.ITEM
+                else -> return
+            }
+            runOnUiThread { onKeysFieldFocused(mode) }
         }
 
         @JavascriptInterface
@@ -1077,11 +1091,40 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     // ---------- Låner-tastaturet ----------
 
-    private fun onLaanerFocused() {
+    private fun onKeysFieldFocused(mode: StaffKeys.Mode) {
         if (Hub.locked || pinPad.isShowing || !prefs().getBoolean(PREF_TWEAKS, true)) return
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(web.windowToken, 0)
-        if (!staffKeys.isShowing) LogBuf.add("Låner-tastatur vist")
-        staffKeys.show()
+        if (!staffKeys.isShowing || staffKeys.mode != mode) {
+            LogBuf.add("Tastatur vist: " + when (mode) {
+                StaffKeys.Mode.LAANER -> "Låner"
+                StaffKeys.Mode.PHONE -> "telefonnummer"
+                StaffKeys.Mode.ITEM -> "materialenummer"
+            })
+        }
+        staffKeys.show(mode)
+    }
+
+    /** Kameraet fra værktøjet til feltet Materialenummer: nummeret tastes ind, og Enter trykkes */
+    private fun onFieldScanned(v: String) {
+        // Kun tal og bogstaver – intet andet sendes ind på siden
+        if (!Regex("^[0-9A-Za-z]{1,40}$").matches(v)) return
+        if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
+        web.evaluateJavascript(KEYS_REFOCUS_JS) {
+            handler.postDelayed({
+                if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return@postDelayed
+                v.forEach { sendChar(it) }
+                sendKey(KeyEvent.KEYCODE_ENTER)
+                LogBuf.add("Materialenummer læst med kamera")
+            }, 200)
+        }
+    }
+
+    private fun sendChar(c: Char) {
+        when (c) {
+            in '0'..'9' -> sendKey(KeyEvent.KEYCODE_0 + (c - '0'))
+            in 'a'..'z' -> sendKey(KeyEvent.KEYCODE_A + (c - 'a'))
+            in 'A'..'Z' -> sendKey(KeyEvent.KEYCODE_A + (c - 'A'), KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)
+        }
     }
 
     private fun hideStaffKeys() {
@@ -1097,9 +1140,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         Hub.lastActivity = SystemClock.elapsedRealtime()
         when (k) {
-            is StaffKeys.Key.Char -> when (k.c) {
-                in '0'..'9' -> sendKey(KeyEvent.KEYCODE_0 + (k.c - '0'))
-                'C' -> sendKey(KeyEvent.KEYCODE_C, KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)
+            is StaffKeys.Key.Char -> sendChar(k.c)
+            StaffKeys.Key.Special -> when (staffKeys.mode) {
+                StaffKeys.Mode.LAANER -> sendChar('C')
+                StaffKeys.Mode.PHONE -> sendKey(KeyEvent.KEYCODE_PLUS)
+                StaffKeys.Mode.ITEM -> @Suppress("DEPRECATION") startActivityForResult(
+                    Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
+                    scanRequestCode,
+                )
             }
             StaffKeys.Key.Delete -> sendKey(KeyEvent.KEYCODE_DEL)
             StaffKeys.Key.Enter -> sendKey(KeyEvent.KEYCODE_ENTER)
@@ -1650,45 +1698,79 @@ private val PIN_FILL_JS = """
 """
 
 /**
- * Feltet "Låner" (fx i Udlån): telefonens tastatur holdes væk (inputmode="none"), og app'en viser sit eget
- * Låner-tastatur, så længe feltet har fokus. Kun felter, der hedder præcis "Låner". "ABC" giver telefonens
- * tastatur, indtil feltet forlades.
+ * Felterne Låner, telefonnumre og Materialenummer: telefonens tastatur holdes væk (inputmode="none"),
+ * og app'en viser sit eget tastatur, så længe feltet har fokus. "ABC" giver telefonens tastatur, indtil
+ * feltet forlades. Felter med tal-agtige navne, der ikke genkendes, nævnes i loggen (kun navnet, aldrig
+ * indholdet), så de kan tilføjes.
  */
 private val LANER_KEYS_JS = """
 (function () {
   if (window.__cnfcKeys) return;
   window.__cnfcKeys = true;
+  var reported = {};
+  function fieldOf(el) { return el.closest ? el.closest('mat-form-field, .mat-mdc-form-field, .mat-form-field') : null; }
   function labelOf(el) {
-    var ff = el.closest ? el.closest('mat-form-field, .mat-mdc-form-field, .mat-form-field') : null;
+    var ff = fieldOf(el);
     if (ff) { var l = ff.querySelector('mat-label, label'); if (l && l.textContent.trim()) return l.textContent; }
     if (el.labels && el.labels.length) return el.labels[0].textContent;
     return el.getAttribute('placeholder') || el.getAttribute('aria-label') || '';
   }
-  function isLaaner(el) {
-    if (!el || el.tagName !== 'INPUT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'hidden') return false;
-    if (location.hostname !== 'cicero.systematic.com') return false;
-    if (el.closest && el.closest('[data-cnfc]')) return false;
-    return labelOf(el).toLowerCase().replace(/[^a-zæøå]/g, '') === 'låner';
+  function phoneIcon(el) {
+    var ff = fieldOf(el);
+    if (!ff) return false;
+    var ic = ff.querySelectorAll('mat-icon, [data-mat-icon-name], [svgicon], [fonticon]');
+    for (var i = 0; i < ic.length; i++) {
+      var t = [ic[i].textContent, ic[i].getAttribute('data-mat-icon-name'), ic[i].getAttribute('svgicon'),
+               ic[i].getAttribute('fonticon')].join(' ').toLowerCase();
+      if (/phone|call|telefon/.test(t)) return true;
+    }
+    return false;
+  }
+  function usable(el) {
+    return el && el.tagName === 'INPUT' && !/^(checkbox|radio|hidden|email|password|date|file|button|submit)$/.test(el.type) &&
+      !el.readOnly && location.hostname === 'cicero.systematic.com' && !(el.closest && el.closest('[data-cnfc]'));
+  }
+  function kind(el) {
+    if (!usable(el)) return null;
+    var raw = labelOf(el).toLowerCase();
+    var t = raw.replace(/[^a-zæøå]/g, '');
+    if (t === 'låner') return 'laaner';
+    if (t === 'materialenummer' || t === 'materialenr') return 'item';
+    if (el.type === 'tel' || /(^|\s)tel/.test(el.getAttribute('autocomplete') || '') || /telefon|mobil|fastnet|fax/.test(raw)) return 'phone';
+    if (t === 'andet' && phoneIcon(el)) return 'phone';
+    return null;
   }
   function mark() {
     var list = document.querySelectorAll('input');
     for (var i = 0; i < list.length; i++) {
       var el = list[i];
-      if (!el.__cnfcAbc && el.getAttribute('inputmode') !== 'none' && isLaaner(el)) {
-        el.setAttribute('inputmode', 'none');
-        el.__cnfcLaaner = true;
-      }
+      if (!el.__cnfcAbc && el.getAttribute('inputmode') !== 'none' && kind(el)) el.setAttribute('inputmode', 'none');
     }
   }
   mark();
   setInterval(mark, 700);
   document.addEventListener('focusin', function (e) {
     var el = e.target;
-    if (!isLaaner(el)) return;
+    var k = kind(el);
+    if (!k) {
+      if (!usable(el)) return;
+      var name = labelOf(el).replace(/\s+/g, ' ').trim().slice(0, 40);
+      var hint = name.toLowerCase();
+      if (/pin/.test(hint)) return;
+      if (/nummer|nr\b|tlf|telefon|mobil|cpr|kort|andet|fax|kode/.test(hint) || el.type === 'number' ||
+          el.getAttribute('inputmode') === 'numeric' || el.getAttribute('inputmode') === 'tel') {
+        var key = name + '|' + el.type;
+        if (!reported[key]) {
+          reported[key] = true;
+          try { CiceroNFC.tweak('Felt uden tastatur: "' + name + '" (type ' + el.type + ')'); } catch (x) {}
+        }
+      }
+      return;
+    }
     window.__cnfcKeysEl = el;
     if (el.__cnfcAbc) return;
     el.setAttribute('inputmode', 'none');
-    try { CiceroNFC.keysFocus(); } catch (x) {}
+    try { CiceroNFC.keysFocus(k); } catch (x) {}
   }, true);
   document.addEventListener('focusout', function (e) {
     var el = e.target;
@@ -1700,6 +1782,14 @@ private val LANER_KEYS_JS = """
     }, 150);
   }, true);
 })();
+"""
+
+/** Feltet får fokus igen efter kameraet, så nummeret kan tastes ind */
+private val KEYS_REFOCUS_JS = """
+(function () {
+  var el = window.__cnfcKeysEl;
+  if (el && document.contains(el)) el.focus();
+})()
 """
 
 /** "ABC": telefonens eget tastatur i Låner-feltet, indtil det forlades */

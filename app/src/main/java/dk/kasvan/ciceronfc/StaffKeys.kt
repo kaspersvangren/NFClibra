@@ -14,7 +14,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Lille tastatur til personalet i feltet "Låner": tal, C, slet, Enter, ABC (telefonens tastatur) og skjul.
+ * Lille tastatur til personalet i felterne Låner, telefonnumre og Materialenummer: tal, slet, Enter,
+ * ABC (telefonens tastatur), skjul og én tast, der skifter efter feltet: C, + eller kamera.
  * Det ligger i bunden som telefonens eget tastatur. Tasterne sendes til Cicero som rigtige tastetryk,
  * så Cicero opfører sig, som hvis der blev tastet på et tastatur. Intet gemmes.
  */
@@ -28,7 +29,16 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         object Enter : Key()
         object Abc : Key()
         object Hide : Key()
+        /** C (Låner), + (telefon) eller kamera (Materialenummer) */
+        object Special : Key()
     }
+
+    enum class Mode { LAANER, PHONE, ITEM }
+
+    var mode = Mode.LAANER
+        private set
+    private lateinit var specialText: TextView
+    private lateinit var specialIcon: ImageView
 
     private val keyBgs = ArrayList<GradientDrawable>()
     private val labels = ArrayList<TextView>()
@@ -47,7 +57,7 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
 
     init {
         row(Key.Char('1'), Key.Char('2'), Key.Char('3'), Key.Delete)
-        row(Key.Char('4'), Key.Char('5'), Key.Char('6'), Key.Char('C'))
+        row(Key.Char('4'), Key.Char('5'), Key.Char('6'), Key.Special)
         row(Key.Char('7'), Key.Char('8'), Key.Char('9'), Key.Abc)
         row(Key.Hide, Key.Char('0'), Key.Enter)
     }
@@ -56,10 +66,21 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         val r = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         for (k in ks) {
             val bg = GradientDrawable().apply { cornerRadius = dp(8).toFloat() }
-            val small = k !is Key.Char || k.c == 'C'
+            val small = k !is Key.Char
             val content: View = when (k) {
                 is Key.Delete -> icon(R.drawable.ic_backspace, "Slet")
                 is Key.Hide -> icon(R.drawable.ic_keyboard_hide, "Skjul tastaturet")
+                is Key.Special -> FrameLayout(ctx).apply {
+                    specialText = TextView(ctx).apply {
+                        gravity = Gravity.CENTER
+                        textSize = 18f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        labels += this
+                    }
+                    specialIcon = icon(R.drawable.ic_camera, "Kamera")
+                    addView(specialText, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                    addView(specialIcon, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                }
                 else -> TextView(ctx).apply {
                     text = when (k) {
                         is Key.Char -> k.c.toString()
@@ -67,7 +88,7 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
                         else -> "Enter"
                     }
                     gravity = Gravity.CENTER
-                    textSize = if (k is Key.Char && k.c != 'C') 22f else 16f
+                    textSize = if (k is Key.Char) 22f else 16f
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                     labels += this
                 }
@@ -119,7 +140,13 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         icons.forEach { it.imageTintList = ColorStateList.valueOf(text) }
     }
 
-    fun show() { view.visibility = View.VISIBLE }
+    fun show(m: Mode) {
+        mode = m
+        specialText.text = if (m == Mode.PHONE) "+" else "C"
+        specialText.visibility = if (m == Mode.ITEM) View.GONE else View.VISIBLE
+        specialIcon.visibility = if (m == Mode.ITEM) View.VISIBLE else View.GONE
+        view.visibility = View.VISIBLE
+    }
     fun hide() { view.visibility = View.GONE }
 
     private fun darker(c: Int): Int {
