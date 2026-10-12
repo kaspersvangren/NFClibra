@@ -765,7 +765,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Kun NFC?",
-            "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan du slå alle ændringerne af Cicero fra – swipe-faner, pinkode-kontakten og Nulstil/Søg-pillen. Så ser Cicero ud præcis som normalt.",
+            "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan du slå alle ændringerne af Cicero fra – swipe-faner, pinkode-kontakten, Nulstil/Søg-pillen og Låner-tastaturet. Så ser Cicero ud præcis som normalt.",
         ) {
             fun box(on: Boolean) = TextView(this).apply {
                 text = if (on) "✓" else ""

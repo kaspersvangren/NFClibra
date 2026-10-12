@@ -60,8 +60,9 @@ Mens værktøjet er åbent, får Cicero ikke besked om tags.
 - Fanerækken øverst kan swipes.
 - Kontakten "Pinkode" ved "Send kvittering" i udlånsbilledet.
 - Knaprækken Nulstil/Søg under søgeformularer ligger altid nederst som en lille pille over bundmenuen. Pillen er en kopi; et tryk på den trykker på Ciceros egen knap.
+- Feltet "Låner" får app'ens eget tastatur (tal, C, slet, Enter). Tasterne sendes som almindelige tastetryk. ABC giver telefonens tastatur.
 
-App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Alle tre slås til og fra på én gang i menuen ⚙ → Indstillinger → Tilpasninger af Cicero (fx før en fejl meldes til Systematic).
+App'en ændrer kun udseendet; Ciceros data og logik røres ikke. De slås til og fra på én gang i menuen ⚙ → Indstillinger → Tilpasninger af Cicero (fx før en fejl meldes til Systematic).
 
 ## Data og sikkerhed
 

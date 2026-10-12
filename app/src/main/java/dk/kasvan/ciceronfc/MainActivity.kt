@@ -29,6 +29,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsetsController
@@ -131,6 +132,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private val unlockRequestCode = 43
     private lateinit var lockView: LinearLayout
     private lateinit var pinPad: PinPad
+    private lateinit var staffKeys: StaffKeys
     private lateinit var lockIcon: LockLogo
     private lateinit var lockTitle: TextView
     private lateinit var lockHint: TextView
@@ -319,6 +321,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         root.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(3)))
         root.addView(divider, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         root.addView(webBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        // Låner-tastaturet ligger under Cicero ligesom telefonens eget tastatur, så Cicero rykker op
+        staffKeys = StaffKeys(this, ::dp).apply { onKey = ::onStaffKey }
+        root.addView(staffKeys.view, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(
             logScroll,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (resources.displayMetrics.heightPixels * 0.4).toInt()),
@@ -411,6 +416,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         userUnlocked = false
         Hub.onLocked()
         pinPad.hide()
+        staffKeys.hide()
         closePopups()
         refreshLockUi()
     }
@@ -693,6 +699,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         logView.setTextColor(pal.logText)
         lockView.setBackgroundColor(pal.bar)
         pinPad.setColors(bg = pal.bar, text = pal.text, sub = pal.sub, key = pal.offCircle, blue = pal.blue)
+        staffKeys.setColors(bg = pal.bar, text = pal.text, key = pal.offCircle, blue = pal.blue)
         lockIcon.setColors(body = pal.text, shackle = pal.sub, cutout = pal.bar)
         lockTitle.setTextColor(pal.text)
         lockHint.setTextColor(pal.sub)
@@ -909,7 +916,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     "AndroidX (Activity, CameraX)\n" +
                     "Copyright The Android Open Source Project\n" +
                     "Apache License 2.0\n\n" +
-                    "Material Icons (ikonerne i menuen)\n" +
+                    "Material Icons (app'ens ikoner)\n" +
                     "Copyright Google LLC\n" +
                     "Apache License 2.0\n\n" +
                     "Google ML Kit (tekst- og stregkodegenkendelse via Google Play-tjenester)\n" +
@@ -1015,6 +1022,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             LogBuf.add("Pinkode-krav: ${scrub(msg)}")
         }
 
+        /** Feltet "Låner" fik eller mistede fokus – vis/skjul Låner-tastaturet. Modtager ingen data fra siden. */
+        @JavascriptInterface
+        fun keysFocus() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread { onLaanerFocused() }
+        }
+
+        @JavascriptInterface
+        fun keysBlur() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread { staffKeys.hide() }
+        }
+
         @JavascriptInterface
         fun tweak(msg: String) {
             if (pageHost != CICERO_HOST) return
@@ -1037,6 +1057,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             return
         }
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(web.windowToken, 0)
+        staffKeys.hide()
         LogBuf.add("Pinkode-tastatur vist")
         pinPad.show(prefs().getBoolean(PREF_PIN_FLIP, false))
     }
@@ -1052,6 +1073,54 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         web.evaluateJavascript(PIN_FILL_JS.replace("%PIN%", pin)) { r ->
             LogBuf.add(if (r?.contains("ok") == true) "Pinkode udfyldt" else "Pinkode-feltet var forsvundet")
         }
+    }
+
+    // ---------- Låner-tastaturet ----------
+
+    private fun onLaanerFocused() {
+        if (Hub.locked || pinPad.isShowing || !prefs().getBoolean(PREF_TWEAKS, true)) return
+        getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(web.windowToken, 0)
+        if (!staffKeys.isShowing) LogBuf.add("Låner-tastatur vist")
+        staffKeys.show()
+    }
+
+    private fun hideStaffKeys() {
+        staffKeys.hide()
+        web.evaluateJavascript(LANER_BLUR_JS, null)
+    }
+
+    private fun onStaffKey(k: StaffKeys.Key) {
+        // Tastetryk går kun til Ciceros egen side og aldrig bag låsen
+        if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) {
+            staffKeys.hide()
+            return
+        }
+        Hub.lastActivity = SystemClock.elapsedRealtime()
+        when (k) {
+            is StaffKeys.Key.Char -> when (k.c) {
+                in '0'..'9' -> sendKey(KeyEvent.KEYCODE_0 + (k.c - '0'))
+                'C' -> sendKey(KeyEvent.KEYCODE_C, KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON)
+            }
+            StaffKeys.Key.Delete -> sendKey(KeyEvent.KEYCODE_DEL)
+            StaffKeys.Key.Enter -> sendKey(KeyEvent.KEYCODE_ENTER)
+            StaffKeys.Key.Hide -> hideStaffKeys()
+            StaffKeys.Key.Abc -> {
+                // Telefonens eget tastatur til feltet, indtil man forlader det
+                staffKeys.hide()
+                web.evaluateJavascript(LANER_ABC_JS, null)
+                handler.postDelayed({
+                    web.requestFocus()
+                    getSystemService(InputMethodManager::class.java)?.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT)
+                }, 150)
+            }
+        }
+    }
+
+    /** Et tastetryk til Cicero, som fra et rigtigt tastatur */
+    private fun sendKey(code: Int, meta: Int = 0) {
+        val t = SystemClock.uptimeMillis()
+        web.dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, 0, meta))
+        web.dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_UP, code, 0, meta))
     }
 
     /** "Tastatur": brug telefonens almindelige tastatur til feltet denne gang */
@@ -1121,6 +1190,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 // Pinkode-tastaturet hører til den side, der bad om det
                 if (pinPad.isShowing) pinPad.hide()
+                staffKeys.hide()
                 onPageChanged(url, loading = true)
             }
 
@@ -1131,6 +1201,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     web.evaluateJavascript(SWIPE_TABS_JS, null)
                     web.evaluateJavascript(PIN_TOGGLE_JS, null)
                     web.evaluateJavascript(STICKY_BUTTONS_JS, null)
+                    web.evaluateJavascript(LANER_KEYS_JS, null)
                     pushPageColors()
                 }
                 handler.postDelayed({ detectCiceroTheme() }, 500)
@@ -1278,6 +1349,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         waitingForPage = false
         // Pinkoden må ikke blive stående på skærmen, hvis app'en forlades
         pinPad.hide()
+        staffKeys.hide()
         nfc?.disableReaderMode(this)
         CookieManager.getInstance().flush()
     }
@@ -1296,6 +1368,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (pinPad.isShowing) {
             pinPad.hide()
             LogBuf.add("Pinkode annulleret")
+            return
+        }
+        if (staffKeys.isShowing) {
+            hideStaffKeys()
             return
         }
         if (web.canGoBack()) web.goBack() else super.onBackPressed()
@@ -1571,6 +1647,79 @@ private val PIN_FILL_JS = """
   el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   return 'ok';
 })('%PIN%')
+"""
+
+/**
+ * Feltet "Låner" (fx i Udlån): telefonens tastatur holdes væk (inputmode="none"), og app'en viser sit eget
+ * Låner-tastatur, så længe feltet har fokus. Kun felter, der hedder præcis "Låner". "ABC" giver telefonens
+ * tastatur, indtil feltet forlades.
+ */
+private val LANER_KEYS_JS = """
+(function () {
+  if (window.__cnfcKeys) return;
+  window.__cnfcKeys = true;
+  function labelOf(el) {
+    var ff = el.closest ? el.closest('mat-form-field, .mat-mdc-form-field, .mat-form-field') : null;
+    if (ff) { var l = ff.querySelector('mat-label, label'); if (l && l.textContent.trim()) return l.textContent; }
+    if (el.labels && el.labels.length) return el.labels[0].textContent;
+    return el.getAttribute('placeholder') || el.getAttribute('aria-label') || '';
+  }
+  function isLaaner(el) {
+    if (!el || el.tagName !== 'INPUT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'hidden') return false;
+    if (location.hostname !== 'cicero.systematic.com') return false;
+    if (el.closest && el.closest('[data-cnfc]')) return false;
+    return labelOf(el).toLowerCase().replace(/[^a-zæøå]/g, '') === 'låner';
+  }
+  function mark() {
+    var list = document.querySelectorAll('input');
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (!el.__cnfcAbc && el.getAttribute('inputmode') !== 'none' && isLaaner(el)) {
+        el.setAttribute('inputmode', 'none');
+        el.__cnfcLaaner = true;
+      }
+    }
+  }
+  mark();
+  setInterval(mark, 700);
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (!isLaaner(el)) return;
+    window.__cnfcKeysEl = el;
+    if (el.__cnfcAbc) return;
+    el.setAttribute('inputmode', 'none');
+    try { CiceroNFC.keysFocus(); } catch (x) {}
+  }, true);
+  document.addEventListener('focusout', function (e) {
+    var el = e.target;
+    if (el !== window.__cnfcKeysEl) return;
+    setTimeout(function () {
+      if (document.activeElement === el) return;
+      if (el.__cnfcAbc) { el.__cnfcAbc = false; el.setAttribute('inputmode', 'none'); }
+      try { CiceroNFC.keysBlur(); } catch (x) {}
+    }, 150);
+  }, true);
+})();
+"""
+
+/** "ABC": telefonens eget tastatur i Låner-feltet, indtil det forlades */
+private val LANER_ABC_JS = """
+(function () {
+  var el = window.__cnfcKeysEl;
+  if (!el || !document.contains(el)) return;
+  el.__cnfcAbc = true;
+  el.setAttribute('inputmode', 'text');
+  el.blur();
+  el.focus();
+})()
+"""
+
+/** Skjul Låner-tastaturet: feltet slipper fokus */
+private val LANER_BLUR_JS = """
+(function () {
+  var el = window.__cnfcKeysEl;
+  if (el && document.activeElement === el) el.blur();
+})()
 """
 
 /** Giv feltet fokus igen uden at det store tastatur kommer frem */
