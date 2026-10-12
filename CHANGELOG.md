@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Låseskærmen kan ikke længere blive hængende efter oplåsning: den fjernes under alle omstændigheder efter et sekund, og et tryk fjerner den med det samme. Nulstil/Søg-pillen lægger sig over Ciceros svævende knapper (fx Overfør til IMS-listesystem) i stedet for at dække dem.
 - **0.1.66** – Fanebjælken bliver stående, hvor man har swipet den hen, når man vælger en fane (før sprang den tilbage og fløj hen til fanen).
 - **0.1.65** – Tastaturet bliver, når man hopper fra ét felt med tastatur til et andet (fx Låner → Telefon), og et tryk i feltet henter det frem igen, hvis det er skjult. Felter, der allerede får taltastatur fra Cicero, nævnes ikke længere i loggen.
 - **0.1.64** – Tastaturet kommer nu også i telefonfelter (med +) og i Materialenummer, hvor kameraet fra værktøjet læser nummeret – stregkode eller tal – og taster det ind. Felter med tal i navnet, der ikke får tastaturet, nævnes i loggen.

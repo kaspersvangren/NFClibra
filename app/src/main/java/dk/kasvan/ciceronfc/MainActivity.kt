@@ -373,7 +373,15 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             gravity = Gravity.CENTER_HORIZONTAL
             isClickable = true // tryk må ikke gå igennem til Cicero
             visibility = View.GONE
-            setOnClickListener { if (Hub.locked) authenticate() }
+            setOnClickListener {
+                if (Hub.locked) authenticate() else {
+                    // Låst op, men låseskærmen står der stadig: et tryk fjerner den
+                    LogBuf.add("Låseskærm fjernet ved tryk")
+                    lockView.animate().cancel()
+                    unlockVisualPending = true
+                    completeUnlockVisual()
+                }
+            }
             // Lidt over midten (2:3), så der er luft under til telefonens fingeraftryksboks
             addView(View(this@MainActivity), LinearLayout.LayoutParams(1, 0, 2f))
             addView(lockIcon, LinearLayout.LayoutParams(dp(104), dp(152)))
@@ -502,27 +510,50 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    private var unlockVisualPending = false
+    private val unlockFallback = Runnable {
+        if (unlockVisualPending && !Hub.locked) {
+            LogBuf.add("Låseskærm fjernet efter tidsgrænse")
+            lockView.animate().cancel()
+            completeUnlockVisual()
+        }
+    }
+
+    /** Afslut oplåsningen på skærmen: Cicero frem, låseskærmen væk. Sker kun én gang pr. oplåsning. */
+    private fun completeUnlockVisual() {
+        if (!unlockVisualPending) return
+        unlockVisualPending = false
+        handler.removeCallbacks(unlockFallback)
+        lockView.alpha = 1f
+        lockIcon.reset()
+        if (Hub.locked) return
+        root.visibility = View.VISIBLE
+        lockView.visibility = View.GONE
+        maybeShowWhatsNew()
+    }
+
     private fun refreshLockUi() {
         val locked = Hub.locked
         val animating = !locked && lockView.visibility == View.VISIBLE && lockView.alpha == 1f
         if (locked) {
+            unlockVisualPending = false
+            handler.removeCallbacks(unlockFallback)
             lockView.animate().cancel()
             lockView.alpha = 1f
             lockIcon.reset()
             lockView.visibility = View.VISIBLE
         } else if (animating) {
+            // Animationen er kun pynt: senest efter lidt over et sekund fjernes låseskærmen under alle omstændigheder
+            unlockVisualPending = true
+            handler.removeCallbacks(unlockFallback)
+            handler.postDelayed(unlockFallback, 1200)
             // Låst op: først springer bøjlen fri, mens Cicero stadig er skjult. Derefter kommer Cicero frem
             // bag låsen, og låseskærmen toner ud. Første gang Cicero tegnes, tager det telefonen et øjeblik –
             // det sker nu, mens låseskærmen dækker, så bøjlen ikke hakker.
             lockIcon.animateOpen {
                 if (Hub.locked) return@animateOpen
                 root.visibility = View.VISIBLE
-                lockView.animate().alpha(0f).setStartDelay(40).setDuration(320).withEndAction {
-                    if (!Hub.locked) lockView.visibility = View.GONE
-                    lockView.alpha = 1f
-                    lockIcon.reset()
-                    if (!Hub.locked) maybeShowWhatsNew()
-                }.start()
+                lockView.animate().alpha(0f).setStartDelay(40).setDuration(320).withEndAction { completeUnlockVisual() }.start()
             }
         }
         // Cicero skjules helt bag låsen – også for skærmlæser og tastatur
@@ -1900,11 +1931,38 @@ private val STICKY_BUTTONS_JS = """
     }
     return best ? best.top : innerHeight;
   }
+  // Ciceros egne svævende knapper (fx "Overfør til IMS-listesystem"): pillen lægges lige over dem
+  function floating(e) {
+    for (var n = 0; e && e !== document.body && n < 8; e = e.parentElement, n++) {
+      if (e.getBoundingClientRect().height > innerHeight * 0.3) return false;
+      var p = getComputedStyle(e).position;
+      if (p === 'fixed' || p === 'sticky') return true;
+    }
+    return false;
+  }
+  function clearBelow(pill, bottomY) {
+    var w = pill.offsetWidth || 200, h = pill.offsetHeight || 44;
+    var left = innerWidth / 2 - w / 2, best = bottomY;
+    for (var i = 0; i <= 6; i++) {
+      var x = left + 4 + (w - 8) * i / 6;
+      var ys = [bottomY - h / 2, bottomY - h + 4, bottomY - 4];
+      for (var k = 0; k < ys.length; k++) {
+        var list = document.elementsFromPoint(x, ys[k]);
+        for (var j = 0; j < list.length; j++) {
+          if (pill.contains(list[j])) continue;
+          var c = list[j].closest && list[j].closest('button, a, [role=button]');
+          if (c && floating(c)) { var t = c.getBoundingClientRect().top; if (t < best) best = t; }
+          break;
+        }
+      }
+    }
+    return best;
+  }
   function makePill() {
     var p = document.createElement('div');
     p.setAttribute('data-cnfc-bar', '1');
     p.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);z-index:900;display:flex;' +
-      'align-items:center;gap:8px;padding:6px 14px;border-radius:999px;' +
+      'align-items:center;gap:8px;padding:6px 14px;border-radius:999px;transition:bottom .2s;' +
       'background:var(--cnfc-card,#fff);box-shadow:0 2px 10px rgba(0,0,0,0.35);';
     return p;
   }
@@ -1968,7 +2026,10 @@ private val STICKY_BUTTONS_JS = """
     bar.pill.style.display = show ? 'flex' : 'none';
     if (!show) return;
     refresh(bar);
-    bar.pill.style.bottom = Math.round(innerHeight - navTop(bar.pill) + 8) + 'px';
+    var base = navTop(bar.pill) - 8;
+    var free = clearBelow(bar.pill, base);
+    var bottomY = free < base ? free - 8 : base;
+    bar.pill.style.bottom = Math.round(innerHeight - bottomY) + 'px';
   }
   sync();
   setInterval(sync, 400);
