@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Fanebjælken bliver stående, hvor man har swipet den hen, når man vælger en fane (før sprang den tilbage og fløj hen til fanen).
+- **0.1.66** – Fanebjælken bliver stående, hvor man har swipet den hen, når man vælger en fane (før sprang den tilbage og fløj hen til fanen).
 - **0.1.65** – Tastaturet bliver, når man hopper fra ét felt med tastatur til et andet (fx Låner → Telefon), og et tryk i feltet henter det frem igen, hvis det er skjult. Felter, der allerede får taltastatur fra Cicero, nævnes ikke længere i loggen.
 - **0.1.64** – Tastaturet kommer nu også i telefonfelter (med +) og i Materialenummer, hvor kameraet fra værktøjet læser nummeret – stregkode eller tal – og taster det ind. Felter med tal i navnet, der ikke får tastaturet, nævnes i loggen.
 - **0.1.63** – Feltet "Låner" (fx i Udlån) får et lille tastatur med tal, C, slet og Enter i stedet for telefonens almindelige. ABC giver det almindelige tastatur. Hører under Tilpasninger af Cicero.
