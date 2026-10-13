@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Sikkerhed efter uafhængig gennemgang: oplåsning kræves altid, når man kommer fra login-siden ind i Cicero; app'en låser også, når en anden app får fokus (delt skærm); serverens billetter er bundet til hele forespørgslen; omdirigeringer og indlejrede rammer kun til Cicero/login; dialoger i værktøjet tæller som brug. Oprydning i koden.
 - **0.1.80** – Telefonens tastatur popper ikke længere op, når Cicero selv sætter markøren i Låner, telefon eller Materialenummer (feltet røres ikke, så Aflever virker stadig).
 - **0.1.79** – Tastaturet til Låner, telefon og materialenummer kommer kun, når man selv trykker i feltet – ikke når Cicero sætter markøren. Det rører heller ikke felterne før da (det fik Aflever til at ignorere bøger). Værktøj til tags: jeres eget biblioteksnummer står som "Vores bibliotek" i en boks for sig, og feltet fra chippen hedder "Bibliotek på chip".
 - **0.1.78** – Sikkerhed: app'en låser efter 2 minutter uden brug (før 5) og med det samme, når skærmen slukkes eller man skifter til en anden app. RFID-serveren tager kun imod forespørgsler, som Cicero inde i NFClibra har sendt – ikke fra andre apps på telefonen.

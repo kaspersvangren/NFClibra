@@ -211,15 +211,10 @@ class PinPad(private val ctx: Context, private val dp: (Int) -> Int) {
             it.textSize = if (big) 17f else 15f
         }
         // Bjælken skiller sig ud fra tastaturet: lidt mørkere end baggrunden (stor: mørkegrå på sort)
-        staffBg.setColor(if (big) Color.parseColor("#262626") else darker(cBg))
+        staffBg.setColor(if (big) Color.parseColor("#262626") else ToolColors.darker(cBg))
         bigButton.text = if (big) "Normal" else "Stor"
         box.requestLayout()
         update()
-    }
-
-    private fun darker(c: Int): Int {
-        val f = 0.88f
-        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
     }
 
     private fun update() {

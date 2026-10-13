@@ -325,7 +325,6 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
         holder.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> holder.post { fitToScreen(holder, col) } }
         col.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) holder.post { fitToScreen(holder, col) } }
-        val scroll = holder
         // Stort flueben/kryds midt på skærmen, der toner ud – så man kan se resultatet på afstand
         flashView = android.widget.ImageView(this).apply {
             alpha = 0f
@@ -333,7 +332,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             setPadding(dp(30), dp(30), dp(30), dp(30))
         }
         setContentView(android.widget.FrameLayout(this).apply {
-            addView(scroll)
+            addView(holder)
             addView(flashView, android.widget.FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER))
         })
         window.statusBarColor = bg
@@ -383,7 +382,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             .setView(picker)
             .setPositiveButton("OK") { _, _ -> set(picker.value) }
             .setNegativeButton("Annuller", null)
-            .show()
+            .show().also { Hub.countTouches(it) }
     }
 
     private var fitScale = 1f
@@ -625,7 +624,6 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    /** Kør en handling på tagget ved telefonen; læs det igen bagefter, så kortet viser det rigtige */
     private fun copyNumber() {
         val nr = info?.content?.barcode?.takeIf { it.isNotEmpty() } ?: return
         getSystemService(android.content.ClipboardManager::class.java)
@@ -676,6 +674,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /** Kør en handling på tagget ved telefonen; læs det igen bagefter, så kortet viser det rigtige */
     private fun withTag(what: String, f: (PhoneTag, Info) -> String) {
         exec.execute {
             val t = tag
@@ -732,7 +731,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 }
             }
             .setNegativeButton("Annuller", null)
-            .show()
+            .show().also { Hub.countTouches(it) }
         d.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(red)
     }
 
@@ -796,7 +795,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                     .setPositiveButton("Overskriv") { _, _ -> exec.execute { confirmedMac = i.mac; askingMac = null; maybeProgram() } }
                     .setNegativeButton("Annuller") { _, _ -> exec.execute { askingMac = null }; disarm("Ikke overskrevet") }
                     .setCancelable(false)
-                    .show()
+                    .show().also { Hub.countTouches(it) }
             }
             return
         }
@@ -877,7 +876,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 }
             }
             .setNegativeButton("Annuller", null)
-            .show()
+            .show().also { Hub.countTouches(it) }
     }
 
     // ---------- Livscyklus ----------

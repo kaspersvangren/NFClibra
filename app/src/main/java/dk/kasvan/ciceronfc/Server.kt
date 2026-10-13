@@ -25,7 +25,7 @@ import kotlin.concurrent.thread
  *
  * Sikkerhed: kun Cicero Mobile (https://cicero.systematic.com) får svar, og kun når
  * forespørgslen er rettet til localhost. Mens app'en er låst, udføres ingen handlinger.
- * NB: en ondsindet app på samme telefon kan stadig forfalske Origin-headeren; browsere kan ikke.
+ * En app på samme telefon kan forfalske Origin-headeren, men ikke skaffe en billet (se nedenfor).
  */
 object Server {
     const val PORT = 1667
@@ -41,25 +41,33 @@ object Server {
 
     /**
      * Billetter: hver gang Cicero inde i NFClibra sender en forespørgsel til serveren, ser app'en den først
-     * (WebView'ets shouldInterceptRequest) og udsteder en billet til netop den adresse. Serveren tager kun
-     * imod forespørgsler med en billet – så andre apps på telefonen kan ikke styre RFID-læseren.
+     * (WebView'ets shouldInterceptRequest) og udsteder en billet til netop den forespørgsel – metode,
+     * sti og parametre. Serveren tager kun imod forespørgsler med en billet – så andre apps på telefonen
+     * kan hverken styre RFID-læseren eller "stjæle" Ciceros billet til en anden forespørgsel.
      */
     private val tickets = ArrayList<Pair<String, Long>>()
     private const val TICKET_MS = 10_000L
 
-    private fun norm(path: String) = path.trimEnd('/').ifEmpty { "/" }
+    /** Samme form på begge sider: METODE + afkodet sti (uden slut-skråstreg) + afkodede parametre */
+    fun ticketKey(method: String, target: String): String {
+        val q = target.indexOf('?')
+        val path = android.net.Uri.decode(if (q >= 0) target.substring(0, q) else target).trimEnd('/').ifEmpty { "/" }
+        val query = if (q >= 0) android.net.Uri.decode(target.substring(q + 1)) else ""
+        return method.uppercase() + " " + path + (if (query.isEmpty()) "" else "?$query")
+    }
 
-    fun expect(path: String) {
+    fun expect(method: String, target: String) {
         val now = SystemClock.elapsedRealtime()
+        val key = ticketKey(method, target)
         synchronized(tickets) {
             tickets.removeAll { now - it.second > TICKET_MS }
-            if (tickets.size < 200) tickets += norm(path) to now
+            if (tickets.size < 200) tickets += key to now
         }
     }
 
-    private fun takeTicket(path: String): Boolean {
+    private fun takeTicket(method: String, target: String): Boolean {
         val now = SystemClock.elapsedRealtime()
-        val p = norm(path)
+        val p = ticketKey(method, target)
         synchronized(tickets) {
             tickets.removeAll { now - it.second > TICKET_MS }
             val i = tickets.indexOfFirst { it.first == p }
@@ -141,6 +149,8 @@ object Server {
 
     private class Request(
         val method: String,
+        /** Sti + parametre, som de stod i forespørgslen (til billetten) */
+        val target: String,
         val path: String,
         val query: Map<String, String>,
         val headers: Map<String, String>,
@@ -162,7 +172,7 @@ object Server {
 
             // Kun Cicero Mobile, og kun rettet til localhost (beskytter mod andre sider og DNS-tricks)
             if (origin != ALLOWED_ORIGIN || host !in Hub.LOCAL_HOSTS) {
-                LogBuf.add("Afvist forespørgsel (${origin ?: "uden afsender"} → ${req.path})")
+                LogBuf.add("Afvist forespørgsel (${(origin ?: "uden afsender").take(60)} → ${req.path.take(40)})")
                 respond(out, 403, "text/plain", "Forbidden", null)
                 sock.close()
                 return
@@ -183,15 +193,13 @@ object Server {
             }
 
             // Kun forespørgsler, som Cicero inde i NFClibra har sendt (se billetter ovenfor)
-            if (!takeTicket(req.path)) {
+            if (!takeTicket(req.method, req.target)) {
                 LogBuf.add("Afvist forespørgsel uden om NFClibra (${req.path.take(40)})")
                 respond(out, 403, "text/plain", "Forbidden", null)
                 sock.close()
                 return
             }
 
-            // Cicero har kontaktet app'en – bruges til at se, om Cicero er sat op
-            Hub.ciceroContacted = true
             when (req.path) {
                 "/events", "/events/" -> {
                     serveEvents(sock, inp, out, origin)
@@ -351,7 +359,7 @@ object Server {
                 query[URLDecoder.decode(k, "UTF-8")] = URLDecoder.decode(v, "UTF-8")
             }
         }
-        return Request(parts[0].uppercase(), path, query, headers)
+        return Request(parts[0].uppercase(), target, path, query, headers)
     }
 
     private fun readLine(inp: InputStream, deadline: Long): String? {

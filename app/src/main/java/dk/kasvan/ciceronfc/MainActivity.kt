@@ -195,7 +195,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
                     val u = request.url
                     if (u.scheme == "http" && Uri.decode(u.host ?: "").lowercase() in Hub.LOCAL_HOSTS && u.port == Server.PORT) {
-                        Server.expect(u.path ?: "/")
+                        Server.expect(request.method, targetOf(u))
                     }
                     return null
                 }
@@ -305,7 +305,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         bar.addView(updateBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) })
 
-        // Tandhjul i stedet for ⋮: tydeligere og nemmere at ramme, men ikke højere end bjælken
+        // Tandhjulet: tydeligt og nemt at ramme, men ikke højere end bjælken
         menuBtn = ImageView(this).apply {
             setImageResource(R.drawable.ic_menu_settings)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -437,15 +437,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         return show().also { d ->
             dialogs += d
             // Tryk og rul i dialogen tæller som brug, så app'en ikke låser midt i fx ændringslisten
-            d.window?.let { w ->
-                val orig = w.callback
-                w.callback = object : android.view.Window.Callback by orig {
-                    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-                        if (!Hub.locked) Hub.lastActivity = SystemClock.elapsedRealtime()
-                        return orig.dispatchTouchEvent(event)
-                    }
-                }
-            }
+            Hub.countTouches(d)
         }
     }
 
@@ -530,13 +522,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         logSection(u)
         if (loading != null) pageLoading = loading
         if (!Hub.locked) {
-            // Forbi login-siden og ind i Cicero uden at nogen har rørt telefonen (fx automatisk login):
-            // så har ingen bevist, hvem de er – lås igen
+            // Fra login-siden og ind i Cicero: låst op uden fingeraftryk, fordi login-siden ikke skulle beskyttes.
+            // Nu er der lånerdata bag – og et "husk mig"-login kan være gået igennem uden at nogen beviste noget.
+            // Derfor kræves telefonens lås altid her (én gang pr. login).
             if (loginUnlockAt >= 0 && !onLoginPage()) {
-                val touched = Hub.lastActivity > loginUnlockAt
                 loginUnlockAt = -1L
-                if (!touched && isDeviceSecure()) {
-                    LogBuf.add("Logget ind uden tryk – låser igen")
+                if (isDeviceSecure()) {
+                    LogBuf.add("Logget ind – kræver oplåsning")
                     lock()
                     if (resumed) startUnlockFlow()
                 }
@@ -642,6 +634,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---------- Guide ----------
 
     private fun openGuide() {
+        openingOwnScreen = true
         startActivity(Intent(this, GuideActivity::class.java).putExtra(GuideActivity.EXTRA_DARK, pal === darkPalette))
     }
 
@@ -831,13 +824,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         else -> null
     }
 
-    private var themeBySetting = false
-
     /** Ciceros indstilling skiftede (eller blev læst) – skift med det samme, uden at vente på en ekstra måling */
     private fun onCiceroThemeSetting(v: String?) {
         val theme = themeFromSetting(v)
-        if (theme == null) { themeBySetting = false; return }
-        themeBySetting = true
+        if (theme == null) return
         val name = if (theme == "dark") "mørk" else "lys"
         if (!themeLogged) { themeLogged = true; LogBuf.add("Tema: $name (Ciceros indstilling)") }
         val newPal = if (theme == "dark") darkPalette else lightPalette
@@ -1250,6 +1240,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun scrub(msg: String) = LogBuf.scrub(msg)
 
+    /** Sti + parametre af en adresse, som browseren sender dem (til serverens billetter) */
+    private fun targetOf(u: Uri): String = (u.encodedPath ?: "/") + (u.encodedQuery?.let { "?$it" } ?: "")
+
     private fun isSystematicHost(h: String) = h == "systematic.com" || h.endsWith(".systematic.com")
 
     // Cicero og de login-tjenester, Cicero kan sende videre til (Systematic, KOMBIT/FKA, MitID)
@@ -1440,10 +1433,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             StaffKeys.Key.Special -> when (staffKeys.mode) {
                 StaffKeys.Mode.LAANER -> sendChar('C')
                 StaffKeys.Mode.PHONE -> sendKey(KeyEvent.KEYCODE_PLUS)
-                StaffKeys.Mode.ITEM -> @Suppress("DEPRECATION") startActivityForResult(
-                    Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
-                    scanRequestCode,
-                )
+                StaffKeys.Mode.ITEM -> {
+                    openingOwnScreen = true
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(
+                        Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
+                        scanRequestCode,
+                    )
+                }
             }
             StaffKeys.Key.Delete -> sendKey(KeyEvent.KEYCODE_DEL)
             StaffKeys.Key.Enter -> sendKey(KeyEvent.KEYCODE_ENTER)
@@ -1502,15 +1499,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
         web.webViewClient = object : WebViewClient() {
-            // Cicero og login bliver i app'en. Andre hjemmesider åbnes i telefonens browser, så de aldrig
-            // får adgang til app'ens funktioner. Omdirigeringer (fx et fremtidigt MitID-login) får lov.
+            // Kun Cicero og login-tjenesterne vises i app'en – også ved omdirigeringer og i indlejrede rammer,
+            // så en fremmed side aldrig kan lande inde i app'en eller nå dens funktioner. Andre hovedsider
+            // åbnes i telefonens browser; fremmede rammer blokeres bare. (Skal et nyt login-flow bruge en
+            // anden host, føjes den til isTrustedHost.)
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme?.lowercase() ?: return true
-                if (scheme == "https" || scheme == "http") {
-                    val h = request.url.host?.lowercase() ?: ""
-                    if (!request.isForMainFrame || request.isRedirect || isTrustedHost(h)) return false
-                    LogBuf.add("Åbnet i browseren: $h")
+                val h = request.url.host?.lowercase() ?: ""
+                if ((scheme == "https" || scheme == "http") && isTrustedHost(h)) return false
+                if (!request.isForMainFrame) {
+                    LogBuf.add("Blokeret ramme fra fremmed side: $h")
+                    return true
                 }
+                if (scheme == "https" || scheme == "http") LogBuf.add("Åbnet i browseren: $h")
                 openExternal(request.url.toString())
                 return true
             }
@@ -1525,7 +1526,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (scheme != "http") return null
                 if (h in Hub.LOCAL_HOSTS) {
                     // Billet til serveren: denne forespørgsel kommer fra Cicero inde i NFClibra
-                    if (u.port == Server.PORT) Server.expect(u.path ?: "/")
+                    if (u.port == Server.PORT) Server.expect(request.method, targetOf(u))
                     return null
                 }
                 if (blockedHosts.add(h)) LogBuf.add("Blokeret usikker forbindelse til '$h'")
@@ -1580,7 +1581,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                 val msg = m.message() ?: ""
                 // Kun beskeder om RFID-forbindelsen – andre fejlbeskeder fra Cicero kan indeholde lånerdata
-                val important = msg.contains("localhost") || msg.contains("${Server.PORT}") ||
+                val important = msg.contains("localhost") || msg.contains(":${Server.PORT}") ||
                     msg.contains("rfid", ignoreCase = true)
                 if (important) LogBuf.add("Cicero-konsol: ${scrub(msg)}")
                 return true
@@ -1600,6 +1601,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 } else {
                     pendingCamera?.deny()
                     pendingCamera = request
+                    openingOwnScreen = true // telefonens tilladelsesvindue må ikke tælle som "uden fokus"
                     requestPermissions(arrayOf(Manifest.permission.CAMERA), cameraRequestCode)
                 }
             }
@@ -1625,7 +1627,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                         } else {
                             openExternal(u.toString())
                         }
-                        v.destroy()
+                        v.post { v.destroy() } // ikke inde i WebView'ets eget callback
                         return true
                     }
                 }
@@ -1662,8 +1664,28 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         web.saveState(outState)
     }
 
+    /** En af app'ens egne skærme (værktøj, guide, kamera) er ved at åbne – det er ikke "uden fokus" */
+    private var openingOwnScreen = false
+
+    override fun onStop() {
+        super.onStop()
+        // Helt væk (baggrund → Hub låser) eller en af vores egne skærme ovenpå: ikke fokus-låsen
+        handler.removeCallbacks(pauseLock)
+        openingOwnScreen = false
+    }
+
+    /** Lås, hvis app'en stadig er uden fokus lidt efter onPause (ikke bare et kort systemvindue) */
+    private val pauseLock = Runnable {
+        if (!resumed && !authInProgress && !Hub.locked && isDeviceSecure()) {
+            LogBuf.add("App'en uden fokus – låser")
+            lock()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        handler.removeCallbacks(pauseLock)
+        openingOwnScreen = false
         LogBuf.add("App'en i forgrunden")
         // Lås, hvis app'en ikke har været brugt i 2 minutter (også mens den var i baggrunden)
         if (isDeviceSecure()) {
@@ -1698,6 +1720,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         super.onPause()
         LogBuf.add("App'en i baggrunden")
         resumed = false
+        // Mister fokus, men er stadig synlig (fx delt skærm med en anden app i fokus): lås, så tiden ikke
+        // bare står stille. Ikke mens telefonens egen oplåsning er fremme, og ikke ved skærmdrejning.
+        if (!authInProgress && !openingOwnScreen && !isChangingConfigurations && isDeviceSecure() && !Hub.locked) {
+            handler.postDelayed(pauseLock, 1500)
+        }
         handler.removeCallbacks(themeTicker)
         handler.removeCallbacks(lockTicker)
         handler.removeCallbacks(delayedAuth)
@@ -1707,6 +1734,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         staffKeys.hide()
         nfc?.disableReaderMode(this)
         CookieManager.getInstance().flush()
+    }
+
+    override fun onDestroy() {
+        // Et biometri-svar, der aldrig kommer, må ikke blokere oplåsningen i en genskabt skærm
+        authCancel?.cancel()
+        authInProgress = false
+        super.onDestroy()
     }
 
     override fun onTagDiscovered(tag: Tag) {
@@ -1904,6 +1938,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     private fun openTagTool() {
+        openingOwnScreen = true
         startActivity(Intent(this, TagToolActivity::class.java).putExtra(TagToolActivity.EXTRA_DARK, pal === darkPalette))
     }
 

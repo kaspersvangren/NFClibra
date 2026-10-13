@@ -80,17 +80,19 @@ App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Hver tilpasning
 - App'en tjekker GitHub for nye versioner (højst hvert 15. minut, via en lille versionsfil) og tilbyder at opdatere sig selv.
   Der sendes ingen data; den spørger kun efter seneste version. Android installerer kun en
   opdatering med samme digitale segl som den installerede app.
-- App'en låser sig efter 2 minutter uden brug, med det samme når skærmen slukkes eller man skifter
-  til en anden app, og ved opstart – også når Værktøj til tags eller
+- App'en låser sig efter 2 minutter uden brug, med det samme når skærmen slukkes, man skifter
+  til en anden app eller en anden app får fokus (delt skærm), ved opstart, og når man kommer fra
+  login-siden ind i Cicero – også når Værktøj til tags eller
   kameraet står fremme. Den låses op med telefonens egen skærmlås (fingeraftryk, ansigt eller pinkode).
   Mens den er låst, er Cicero skjult, og bøger hverken læses eller ændres. Værktøj til tags kræver
   altid oplåsning, også når Cicero står på login-siden.
 - Den lokale server svarer kun forespørgsler fra Cicero Mobile
   (`https://cicero.systematic.com`) rettet til localhost – og kun dem, som Cicero inde i NFClibra
-  faktisk har sendt (app'en ser hver forespørgsel først og udsteder en billet). Andre apps på
-  telefonen kan derfor ikke styre RFID-læseren.
+  faktisk har sendt (app'en ser hver forespørgsel først og udsteder en billet til netop den – metode,
+  sti og parametre). Andre apps på telefonen kan derfor ikke styre RFID-læseren.
 - Kameraet (scanning af lånerkort) gives kun til Ciceros egen side, og pinkoden sendes kun dertil.
-- Andre hjemmesider end Cicero og login åbnes i telefonens browser, ikke i app'en.
+- Andre hjemmesider end Cicero og login åbnes i telefonens browser, ikke i app'en – også ved
+  omdirigeringer. Indlejrede rammer fra andre sider blokeres.
 - Ukrypteret forbindelse er kun tilladt til app'ens egen server på telefonen.
 - Værktøjets kamera genkender tal og stregkoder på selve telefonen (Googles ML Kit via Play-tjenester).
   Billeder gemmes ikke og sendes ikke; Play-tjenester kan sende anonym brugsstatistik om genkendelsen til Google.

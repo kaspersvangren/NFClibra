@@ -132,9 +132,9 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
     }
 
     fun setColors(bg: Int, text: Int, key: Int, blue: Int) {
-        view.setBackgroundColor(darker(bg))
+        view.setBackgroundColor(ToolColors.darker(bg))
         keyBgs.forEach { it.setColor(key) }
-        smallBgs.forEach { it.setColor(mix(key, darker(bg))) }
+        smallBgs.forEach { it.setColor(ToolColors.mix(key, ToolColors.darker(bg))) }
         enterBg.setColor(blue)
         labels.forEach { it.setTextColor(if (it.text.toString() == "Enter") Color.WHITE else text) }
         icons.forEach { it.imageTintList = ColorStateList.valueOf(text) }
@@ -149,11 +149,4 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
     }
     fun hide() { view.visibility = View.GONE }
 
-    private fun darker(c: Int): Int {
-        val f = 0.88f
-        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
-    }
-
-    private fun mix(a: Int, b: Int) = Color.rgb(
-        (Color.red(a) + Color.red(b)) / 2, (Color.green(a) + Color.green(b)) / 2, (Color.blue(a) + Color.blue(b)) / 2)
 }

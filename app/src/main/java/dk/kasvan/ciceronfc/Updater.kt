@@ -26,7 +26,6 @@ object Updater {
     private const val VERSION_FILE = "https://github.com/kaspersvangren/cicero-nfc/releases/latest/download/version.json"
     // Reserve, hvis filen ikke kan hentes
     private const val API = "https://api.github.com/repos/kaspersvangren/cicero-nfc/releases/latest"
-    private const val REPO_DOWNLOAD = "https://github.com/kaspersvangren/cicero-nfc/releases/download/"
     // Begge projektnavne godtages, så projektet senere kan omdøbes uden at opdateringen går i stykker
     private val DOWNLOAD_PREFIXES = listOf(
         "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
@@ -109,7 +108,7 @@ object Updater {
         val tag = j.getString("tag")
         val apk = j.getString("apk")
         if (apk !in APK_NAMES || !Regex("""^v\d+\.\d+\.\d+$""").matches(tag)) throw IOException("ugyldig versionsfil")
-        return Triple(tag, "$REPO_DOWNLOAD$tag/$apk", j.optString("notes", ""))
+        return Triple(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""))
     }
 
     /** Det samme fra GitHubs API (reserve) */

@@ -131,8 +131,17 @@ object Hub {
         })
     }
 
-    /** Cicero har kaldt RFID-serveren, siden app'en startede (= Cicero er sat op til NFClibra) */
-    @Volatile var ciceroContacted = false
+    /** Tryk og rul i en dialog tæller som brug, så app'en ikke låser midt i den */
+    fun countTouches(d: android.app.Dialog) {
+        val w = d.window ?: return
+        val orig = w.callback
+        w.callback = object : android.view.Window.Callback by orig {
+            override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+                if (!locked) lastActivity = SystemClock.elapsedRealtime()
+                return orig.dispatchTouchEvent(event)
+            }
+        }
+    }
 
     @Volatile var mode = "IDLE"
     @Volatile var statusText = ""

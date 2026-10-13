@@ -16,4 +16,13 @@ class ToolColors(dark: Boolean) {
     val green = Color.parseColor("#2F855A")
     val orange = Color.parseColor("#DD6B20")
     val red = Color.parseColor("#C53030")
+
+    companion object {
+        /** Lidt mørkere udgave af en farve (til bjælker, der skal skille sig ud fra baggrunden) */
+        fun darker(c: Int, f: Float = 0.88f): Int =
+            Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
+
+        fun mix(a: Int, b: Int): Int =
+            Color.rgb((Color.red(a) + Color.red(b)) / 2, (Color.green(a) + Color.green(b)) / 2, (Color.blue(a) + Color.blue(b)) / 2)
+    }
 }
