@@ -487,6 +487,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (section != lastSection) {
             lastSection = section
             LogBuf.add("Side: $section")
+            maybeScheduleSetupCheck(section)
         }
     }
 
@@ -885,11 +886,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             setPadding(dp(16), dp(10), dp(16), dp(10))
             setOnClickListener {
                 win.dismiss()
-                if (userUnlocked || !isDeviceSecure()) openTagTool() else {
-                    // Fx låst op af login-siden: værktøjet kan ændre tags, så telefonens lås kræves først
-                    openToolAfterUnlock = true
-                    authenticate()
-                }
+                openToolChecked()
             }
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             marginStart = dp(12); marginEnd = dp(12)
@@ -1044,7 +1041,63 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             .track()
     }
 
+    /** Værktøj til tags – kræver telefonens lås, hvis app'en kun er låst op af login-siden */
+    private fun openToolChecked() {
+        if (Hub.locked) return
+        if (userUnlocked || !isDeviceSecure()) openTagTool() else {
+            // Fx låst op af login-siden: værktøjet kan ændre tags, så telefonens lås kræves først
+            openToolAfterUnlock = true
+            authenticate()
+        }
+    }
+
     // ---------- Opsætning af Cicero ----------
+
+    /**
+     * Første gange man er på Udlån/Aflever eller materialesøgningen: har Cicero ikke kontaktet app'en
+     * inden for 8 sekunder, tilbydes "Sæt Cicero op". Højst to gange i alt; aldrig når Cicero er sat op.
+     */
+    private var setupCheckDone = false
+    private var setupCheckSection: String? = null
+    private val setupCheck = object : Runnable {
+        override fun run() {
+            val p = prefs()
+            if (Hub.ciceroContacted) { p.edit().putBoolean("ciceroSetUp", true).apply(); setupCheckDone = true; return }
+            if (setupCheckDone || lastSection != setupCheckSection) return
+            // Ikke lige nu (låst, i baggrunden, en dialog er fremme): prøv lidt senere
+            if (Hub.locked || !resumed || dialogs.any { it.isShowing } || pinPad.isShowing) {
+                handler.postDelayed(this, 8000)
+                return
+            }
+            setupCheckDone = true
+            p.edit().putInt("setupOffers", p.getInt("setupOffers", 0) + 1).apply()
+            LogBuf.add("Cicero har ikke kontaktet NFClibra – tilbyder opsætning")
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("Sæt Cicero op til NFClibra?")
+                .setMessage(
+                    "Cicero bruger ikke NFClibra som RFID-læser endnu.\n\n" +
+                        "NFClibra kan udfylde Ciceros RFID-opsætning for dig (Enhedsindstillinger → RFID scanner). " +
+                        "Det kan også gøres senere fra menuen: Sæt Cicero op.",
+                )
+                .setPositiveButton("Sæt op") { _, _ -> setUpCicero() }
+                .setNegativeButton("Ikke nu", null)
+                .track()
+        }
+    }
+
+    private fun maybeScheduleSetupCheck(section: String) {
+        if (setupCheckDone) return
+        val p = prefs()
+        if (Hub.ciceroContacted || p.getBoolean("ciceroSetUp", false) || p.getInt("setupOffers", 0) >= 2) {
+            if (Hub.ciceroContacted) p.edit().putBoolean("ciceroSetUp", true).apply()
+            setupCheckDone = true
+            return
+        }
+        if (section != "Cicero /circulation" && section != "Cicero /catalogue") return
+        setupCheckSection = section
+        handler.removeCallbacks(setupCheck)
+        handler.postDelayed(setupCheck, 8000)
+    }
 
     private val setupHelp =
         "Gør det selv i Cicero: tryk på dit navn øverst → Enhedsindstillinger → RFID scanner:\n\n" +
@@ -1072,8 +1125,20 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun onSetupResult(msg: String) {
         LogBuf.add("Opsætning af Cicero: ${scrub(msg)}")
         val (title, text) = when {
-            msg.startsWith("ok") -> "Cicero er sat op" to
-                "Cicero bruger nu NFClibra som RFID-læser (${msg.removePrefix("ok").trim(' ', ':')}).\n\nGå til Udlån eller Aflever – ikonet øverst til venstre bliver blåt, når Cicero lytter."
+            msg.startsWith("ok") -> {
+                val all = linkedMapOf(
+                    "scanner" to "Scanner: Deichman",
+                    "hostname" to "Hostname: localhost",
+                    "port" to "Port: ${Server.PORT}",
+                    "til som standard" to "Slå RFID-scanner til som standard: til",
+                )
+                val done = msg.removePrefix("ok").trim(' ', ':').split(",").map { it.trim() }
+                val lines = all.filterKeys { it in done }.values.joinToString("\n") { "• $it" }
+                "Cicero er sat op" to
+                    "Ændret i Enhedsindstillinger → RFID scanner:\n$lines" +
+                    (if (done.size < all.size) "\n\nResten stod allerede rigtigt." else "") +
+                    "\n\nGå til Udlån eller Aflever – ikonet øverst til venstre bliver blåt, når Cicero lytter."
+            }
             msg.startsWith("allerede") -> "Cicero er allerede sat op" to
                 "Alt stod rigtigt, så intet er ændret. Lytter Cicero ikke, så prøv at genindlæse Cicero fra menuen."
             else -> "Kunne ikke sætte Cicero op" to "Det automatiske gik ikke ($msg).\n\n$setupHelp"
@@ -1138,6 +1203,16 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         fun keysBlur() {
             if (pageHost != CICERO_HOST) return
             runOnUiThread { staffKeys.hide() }
+        }
+
+        /** "Tags"-knappen i Ciceros bjælke */
+        @JavascriptInterface
+        fun openTool() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread {
+                LogBuf.add("Værktøj åbnet fra Tags-knappen")
+                openToolChecked()
+            }
         }
 
         /** Resultatet af "Sæt Cicero op" (kun en kort status, aldrig indhold fra siden) */
@@ -1349,6 +1424,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     web.evaluateJavascript(PIN_TOGGLE_JS, null)
                     web.evaluateJavascript(STICKY_BUTTONS_JS, null)
                     web.evaluateJavascript(LANER_KEYS_JS, null)
+                    web.evaluateJavascript(TAGS_BUTTON_JS, null)
                     pushPageColors()
                 }
                 handler.postDelayed({ detectCiceroTheme() }, 500)
@@ -2021,6 +2097,84 @@ private val RFID_SETUP_JS = """
       return sleep(500).then(function () { report('ok: ' + changed.join(', ')); });
     });
   }).catch(function (e) { report(typeof e === 'string' ? e : 'fejl'); });
+})();
+"""
+
+/**
+ * Knappen "Tags" midt i Ciceros egen bjælke (mellem logoet og brugernavnet). Kun der, hvor bjælken
+ * findes (hovedskærmene); fly-ins lægger sig over den som over resten af bjælken. Tryk åbner Værktøj til tags.
+ */
+private val TAGS_BUTTON_JS = """
+(function () {
+  if (window.__cnfcTags) return;
+  window.__cnfcTags = true;
+  var logged = false;
+  function textOf(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); }
+  function visible(el) { return !!(el && el.offsetParent !== null); }
+  function chip() {
+    var user = sessionStorage.getItem('username') || '';
+    if (!user) return null;
+    var list = document.querySelectorAll('button, [role=button], a');
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i], t = textOf(b);
+      if (t.indexOf(user) >= 0 && t.length < 80 && visible(b) && !b.closest('.cdk-overlay-container')) return b;
+    }
+    return null;
+  }
+  function headerOf(c) {
+    for (var e = c.parentElement; e && e !== document.body; e = e.parentElement) {
+      var r = e.getBoundingClientRect();
+      if (r.width >= innerWidth * 0.9 && r.height < 140) return e;
+      if (r.height >= 140) return null;
+    }
+    return null;
+  }
+  function make() {
+    var b = document.createElement('button');
+    b.setAttribute('data-cnfc', 'tags');
+    b.type = 'button';
+    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">' +
+      '<circle cx="12" cy="12" r="1.6" fill="#fff"/><path d="M15.5 8.5a5 5 0 0 1 0 7M8.5 8.5a5 5 0 0 0 0 7M18.4 5.6a9 9 0 0 1 0 12.8M5.6 5.6a9 9 0 0 0 0 12.8"/></svg>' +
+      '<span>Tags</span>';
+    b.style.cssText = 'position:absolute;z-index:2;display:flex;align-items:center;gap:6px;border:none;cursor:pointer;' +
+      'background:#0078D3;color:#fff;font:inherit;font-size:14px;font-weight:600;letter-spacing:.2px;' +
+      'padding:6px 14px 6px 11px;border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.3);transform:translate(-50%,-50%);';
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      try { CiceroNFC.openTool(); } catch (x) {}
+    }, true);
+    return b;
+  }
+  function sync() {
+    if (location.hostname !== 'cicero.systematic.com') return;
+    var mine = document.querySelector('[data-cnfc="tags"]');
+    var c = chip(), h = c && headerOf(c);
+    if (!h) { if (mine) mine.style.display = 'none'; return; }
+    if (!mine || mine.parentElement !== h) {
+      if (mine) mine.remove();
+      mine = make();
+      if (getComputedStyle(h).position === 'static') h.style.position = 'relative';
+      h.appendChild(mine);
+      if (!logged) { logged = true; try { CiceroNFC.tweak('Tags-knap sat i Ciceros bjælke'); } catch (x) {} }
+    }
+    // Midt i den frie plads mellem det, der står til venstre (logoet), og navnet
+    var hr = h.getBoundingClientRect(), cr = c.getBoundingClientRect(), left = hr.left + 12;
+    var kids = h.querySelectorAll('*');
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i];
+      if (k === mine || mine.contains(k) || k.contains(c) || c.contains(k)) continue;
+      var r = k.getBoundingClientRect();
+      if (r.width > 0 && r.width < hr.width / 2 && r.right <= cr.left && r.right > left) left = r.right;
+    }
+    mine.style.display = 'flex';
+    var free = cr.left - left;
+    if (free < mine.offsetWidth + 16) { mine.style.display = 'none'; return; }
+    mine.style.left = Math.round((left + cr.left) / 2 - hr.left) + 'px';
+    mine.style.top = Math.round(cr.top + cr.height / 2 - hr.top) + 'px';
+  }
+  sync();
+  setInterval(sync, 700);
+  addEventListener('resize', sync);
 })();
 """
 

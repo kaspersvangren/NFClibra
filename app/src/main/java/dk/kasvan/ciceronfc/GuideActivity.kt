@@ -390,7 +390,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Værktøj til tags",
-            "Den blå knap nederst i menuen. Se hvad der står på en chip, slå alarmen til eller fra, nulstil den, eller programmér en ny – materialenummeret kan læses med kameraet, både som stregkode og som tal.",
+            "Den blå Tags-knap i Ciceros bjælke – eller nederst i menuen. Se hvad der står på en chip, slå alarmen til eller fra, nulstil den, eller programmér en ny – materialenummeret kan læses med kameraet, både som stregkode og som tal.",
         ) {
             val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
             val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

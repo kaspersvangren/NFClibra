@@ -152,6 +152,8 @@ object Server {
                 return
             }
 
+            // Cicero har kontaktet app'en – bruges til at se, om Cicero er sat op
+            Hub.ciceroContacted = true
             when (req.path) {
                 "/events", "/events/" -> {
                     serveEvents(sock, inp, out, origin)

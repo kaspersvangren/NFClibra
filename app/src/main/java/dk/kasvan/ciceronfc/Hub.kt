@@ -109,6 +109,9 @@ object Hub {
     @Volatile var locked = true
     @Volatile var lastActivity = 0L
 
+    /** Cicero har kaldt RFID-serveren, siden app'en startede (= Cicero er sat op til NFClibra) */
+    @Volatile var ciceroContacted = false
+
     @Volatile var mode = "IDLE"
     @Volatile var statusText = ""
         private set
