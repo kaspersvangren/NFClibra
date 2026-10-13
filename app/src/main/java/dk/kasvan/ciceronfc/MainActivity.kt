@@ -472,6 +472,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     private var lastSection: String? = null
+    private var storageLogged = false
 
     /** Log hvilken del af Cicero der vises – kun første del af adressen, uden tal (adresser kan indeholde lånernumre) */
     private fun logSection(u: Uri) {
@@ -487,7 +488,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (section != lastSection) {
             lastSection = section
             LogBuf.add("Side: $section")
-            maybeScheduleSetupCheck(section)
         }
     }
 
@@ -1053,52 +1053,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     // ---------- Opsætning af Cicero ----------
 
-    /**
-     * Første gange man er på Udlån/Aflever eller materialesøgningen: har Cicero ikke kontaktet app'en
-     * inden for 8 sekunder, tilbydes "Sæt Cicero op". Højst to gange i alt; aldrig når Cicero er sat op.
-     */
-    private var setupCheckDone = false
-    private var setupCheckSection: String? = null
-    private val setupCheck = object : Runnable {
-        override fun run() {
-            val p = prefs()
-            if (Hub.ciceroContacted) { p.edit().putBoolean("ciceroSetUp", true).apply(); setupCheckDone = true; return }
-            if (setupCheckDone || lastSection != setupCheckSection) return
-            // Ikke lige nu (låst, i baggrunden, en dialog er fremme): prøv lidt senere
-            if (Hub.locked || !resumed || dialogs.any { it.isShowing } || pinPad.isShowing) {
-                handler.postDelayed(this, 8000)
-                return
-            }
-            setupCheckDone = true
-            p.edit().putInt("setupOffers", p.getInt("setupOffers", 0) + 1).apply()
-            LogBuf.add("Cicero har ikke kontaktet NFClibra – tilbyder opsætning")
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("Sæt Cicero op til NFClibra?")
-                .setMessage(
-                    "Cicero bruger ikke NFClibra som RFID-læser endnu.\n\n" +
-                        "NFClibra kan udfylde Ciceros RFID-opsætning for dig (Enhedsindstillinger → RFID scanner). " +
-                        "Det kan også gøres senere fra menuen: Sæt Cicero op.",
-                )
-                .setPositiveButton("Sæt op") { _, _ -> setUpCicero() }
-                .setNegativeButton("Ikke nu", null)
-                .track()
-        }
-    }
-
-    private fun maybeScheduleSetupCheck(section: String) {
-        if (setupCheckDone) return
-        val p = prefs()
-        if (Hub.ciceroContacted || p.getBoolean("ciceroSetUp", false) || p.getInt("setupOffers", 0) >= 2) {
-            if (Hub.ciceroContacted) p.edit().putBoolean("ciceroSetUp", true).apply()
-            setupCheckDone = true
-            return
-        }
-        if (section != "Cicero /circulation" && section != "Cicero /catalogue") return
-        setupCheckSection = section
-        handler.removeCallbacks(setupCheck)
-        handler.postDelayed(setupCheck, 8000)
-    }
-
     private val setupHelp =
         "Gør det selv i Cicero: tryk på dit navn øverst → Enhedsindstillinger → RFID scanner:\n\n" +
             "Scanner: Deichman\n" +
@@ -1418,6 +1372,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
             override fun onPageFinished(view: WebView, url: String) {
                 onPageChanged(url, loading = false)
+                // Midlertidigt: navnene (ikke indholdet) på Ciceros gemte indstillinger, så RFID-opsætningen kan tjekkes direkte
+                if (!storageLogged && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
+                    storageLogged = true
+                    handler.postDelayed({ web.evaluateJavascript(STORAGE_NAMES_JS, null) }, 4000)
+                }
                 injectPinWatcher()
                 if (prefs().getBoolean(PREF_TWEAKS, true)) {
                     web.evaluateJavascript(SWIPE_TABS_JS, null)
@@ -2158,13 +2117,14 @@ private val TAGS_BUTTON_JS = """
       if (!logged) { logged = true; try { CiceroNFC.tweak('Tags-knap sat i Ciceros bjælke'); } catch (x) {} }
     }
     // Midt i den frie plads mellem det, der står til venstre (logoet), og navnet
+    // Kun selve logobilledet tæller (usynlige bokse i bjælken må ikke flytte knappen)
     var hr = h.getBoundingClientRect(), cr = c.getBoundingClientRect(), left = hr.left + 12;
-    var kids = h.querySelectorAll('*');
-    for (var i = 0; i < kids.length; i++) {
-      var k = kids[i];
-      if (k === mine || mine.contains(k) || k.contains(c) || c.contains(k)) continue;
+    var pics = h.querySelectorAll('img, svg, canvas, picture');
+    for (var i = 0; i < pics.length; i++) {
+      var k = pics[i];
+      if (mine.contains(k) || c.contains(k)) continue;
       var r = k.getBoundingClientRect();
-      if (r.width > 0 && r.width < hr.width / 2 && r.right <= cr.left && r.right > left) left = r.right;
+      if (r.width > 0 && r.right <= cr.left && r.right > left) left = r.right;
     }
     mine.style.display = 'flex';
     var free = cr.left - left;
@@ -2175,6 +2135,28 @@ private val TAGS_BUTTON_JS = """
   sync();
   setInterval(sync, 700);
   addEventListener('resize', sync);
+})();
+"""
+
+/**
+ * Midlertidigt: skriver navnene på Ciceros gemte indstillinger i loggen – aldrig indholdet. Brugernavnet
+ * erstattes af <bruger>. Bruges til at finde, hvor Enhedsindstillinger (RFID scanner) gemmes.
+ */
+private val STORAGE_NAMES_JS = """
+(function () {
+  if (location.hostname !== 'cicero.systematic.com') return;
+  var user = sessionStorage.getItem('username') || '';
+  function names(st, tag) {
+    var out = [];
+    for (var i = 0; i < st.length && out.length < 40; i++) {
+      var k = st.key(i) || '';
+      if (user) k = k.split(user).join('<bruger>');
+      out.push(tag + k.slice(0, 60));
+    }
+    return out;
+  }
+  var all = names(localStorage, '').concat(names(sessionStorage, 's:'));
+  try { CiceroNFC.tweak('Gemte navne: ' + all.join(', ')); } catch (x) {}
 })();
 """
 
