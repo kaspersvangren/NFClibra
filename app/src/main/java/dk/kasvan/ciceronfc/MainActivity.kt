@@ -472,7 +472,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     private var lastSection: String? = null
-    private var storageLogged = false
+    private var scannerChecked = false
+    private var scannerCheckTries = 0
 
     /** Log hvilken del af Cicero der vises – kun første del af adressen, uden tal (adresser kan indeholde lånernumre) */
     private fun logSection(u: Uri) {
@@ -1053,6 +1054,40 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     // ---------- Opsætning af Cicero ----------
 
+    private fun runScannerCheck() {
+        if (Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
+        web.evaluateJavascript(SCANNER_CHECK_JS.replace("%PORT%", Server.PORT.toString()), null)
+    }
+
+    /** Svar fra tjekket: "mangler" eller "localhost=ja|nej,port=ja|nej" (aldrig selve indstillingen) */
+    private fun onScannerCheck(r: String) {
+        val ok = r == "localhost=ja,port=ja"
+        LogBuf.add("Scanner-opsætning i Cicero: " + when {
+            ok -> "localhost og ${Server.PORT} – i orden"
+            r == "mangler" -> "ikke sat op"
+            else -> r.replace("=", " ").replace(",", ", ").replace("port", "${Server.PORT}")
+        })
+        val p = prefs()
+        if (ok || p.getInt("setupOffers", 0) >= 2) return
+        // Ikke lige nu (låst, i baggrunden, en dialog er fremme): prøv lidt senere
+        if (Hub.locked || !resumed || dialogs.any { it.isShowing } || pinPad.isShowing) {
+            if (scannerCheckTries++ < 20) handler.postDelayed({ runScannerCheck() }, 8000)
+            return
+        }
+        p.edit().putInt("setupOffers", p.getInt("setupOffers", 0) + 1).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Sæt Cicero op til NFClibra?")
+            .setMessage(
+                (if (r == "mangler") "Cicero er ikke sat op til en RFID-læser på denne telefon.\n\n"
+                else "Ciceros RFID-opsætning peger ikke på NFClibra.\n\n") +
+                    "NFClibra kan udfylde den for dig (Enhedsindstillinger → RFID scanner). " +
+                    "Det kan også gøres senere fra menuen: Sæt Cicero op.",
+            )
+            .setPositiveButton("Sæt op") { _, _ -> setUpCicero() }
+            .setNegativeButton("Ikke nu", null)
+            .track()
+    }
+
     private val setupHelp =
         "Gør det selv i Cicero: tryk på dit navn øverst → Enhedsindstillinger → RFID scanner:\n\n" +
             "Scanner: Deichman\n" +
@@ -1167,6 +1202,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 LogBuf.add("Værktøj åbnet fra Tags-knappen")
                 openToolChecked()
             }
+        }
+
+        /** Resultatet af tjekket af Ciceros RFID-opsætning */
+        @JavascriptInterface
+        fun scannerCheck(r: String) {
+            if (pageHost != CICERO_HOST) return
+            if (r != "mangler" && !Regex("^localhost=(ja|nej),port=(ja|nej)$").matches(r)) return
+            runOnUiThread { onScannerCheck(r) }
         }
 
         /** Resultatet af "Sæt Cicero op" (kun en kort status, aldrig indhold fra siden) */
@@ -1372,10 +1415,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
             override fun onPageFinished(view: WebView, url: String) {
                 onPageChanged(url, loading = false)
-                // Midlertidigt: navnene (ikke indholdet) på Ciceros gemte indstillinger, så RFID-opsætningen kan tjekkes direkte
-                if (!storageLogged && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
-                    storageLogged = true
-                    handler.postDelayed({ web.evaluateJavascript(STORAGE_NAMES_JS, null) }, 4000)
+                // Én gang efter login: er Ciceros RFID-opsætning (Enhedsindstillinger) sat til NFClibra?
+                if (!scannerChecked && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
+                    scannerChecked = true
+                    handler.postDelayed({ runScannerCheck() }, 4000)
                 }
                 injectPinWatcher()
                 if (prefs().getBoolean(PREF_TWEAKS, true)) {
@@ -2139,24 +2182,20 @@ private val TAGS_BUTTON_JS = """
 """
 
 /**
- * Midlertidigt: skriver navnene på Ciceros gemte indstillinger i loggen – aldrig indholdet. Brugernavnet
- * erstattes af <bruger>. Bruges til at finde, hvor Enhedsindstillinger (RFID scanner) gemmes.
+ * Er Ciceros RFID-opsætning sat til NFClibra? Læser Enhedsindstillingen DK-…_SELECTED_SCANNER_CONFIG og
+ * svarer kun "mangler" eller om localhost og porten står der – selve indstillingen sendes ikke videre.
  */
-private val STORAGE_NAMES_JS = """
+private val SCANNER_CHECK_JS = """
 (function () {
   if (location.hostname !== 'cicero.systematic.com') return;
-  var user = sessionStorage.getItem('username') || '';
-  function names(st, tag) {
-    var out = [];
-    for (var i = 0; i < st.length && out.length < 40; i++) {
-      var k = st.key(i) || '';
-      if (user) k = k.split(user).join('<bruger>');
-      out.push(tag + k.slice(0, 60));
-    }
-    return out;
+  var v = null;
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i) || '';
+    if (/_SELECTED_SCANNER_CONFIG${'$'}/.test(k)) { v = localStorage.getItem(k) || ''; break; }
   }
-  var all = names(localStorage, '').concat(names(sessionStorage, 's:'));
-  try { CiceroNFC.tweak('Gemte navne: ' + all.join(', ')); } catch (x) {}
+  var r = v === null ? 'mangler' :
+    'localhost=' + (v.indexOf('localhost') >= 0 ? 'ja' : 'nej') + ',port=' + (v.indexOf('%PORT%') >= 0 ? 'ja' : 'nej');
+  try { CiceroNFC.scannerCheck(r); } catch (x) {}
 })();
 """
 
