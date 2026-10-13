@@ -59,8 +59,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     companion object {
         const val START_URL = "https://cicero.systematic.com/"
 
-        /** App'en låser sig efter 5 minutter uden brug. */
-        const val LOCK_AFTER_MS = 5 * 60 * 1000L
+        /** App'en låser sig efter 2 minutter uden brug – og med det samme, når skærmen slukkes eller app'en forlades. */
+        const val LOCK_AFTER_MS = 2 * 60 * 1000L
         /** Ciceros login-side (Keycloak). Står app'en her, er man ikke logget ind. */
         const val LOGIN_HOST = "auth.cicero.systematic.com"
         const val MAX_PAGE_WAIT_MS = 5000L
@@ -181,6 +181,26 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         LogBuf.listener = { runOnUiThread { refreshLog() } }
         Hub.statusListener = { runOnUiThread { refreshStatus() } }
         Updater.listener = { runOnUiThread { refreshStatus() } }
+        // Lås med det samme, når skærmen slukkes eller man skifter til en anden app
+        Hub.watchLifecycle(application)
+        Hub.onBackground = {
+            if (!authInProgress && isDeviceSecure()) {
+                if (!Hub.locked) LogBuf.add("App'en forladt – låser")
+                lock()
+            }
+        }
+        // Forespørgsler, som en evt. service worker i Cicero sender videre, får også billet til serveren
+        try {
+            android.webkit.ServiceWorkerController.getInstance().setServiceWorkerClient(object : android.webkit.ServiceWorkerClient() {
+                override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                    val u = request.url
+                    if (u.scheme == "http" && Uri.decode(u.host ?: "").lowercase() in Hub.LOCAL_HOSTS && u.port == Server.PORT) {
+                        Server.expect(u.path ?: "/")
+                    }
+                    return null
+                }
+            })
+        } catch (_: Exception) {}
         if (savedInstanceState == null) Updater.cleanup(this)
         refreshStatus()
         if (!isDeviceSecure()) {
@@ -456,6 +476,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         LogBuf.add(reason)
         refreshLockUi()
         if (userUnlocked && openToolAfterUnlock) { openToolAfterUnlock = false; openTagTool() }
+        // Kom tilbage fra "Tillad installation af apps", mens app'en var låst – fortsæt opdateringen nu
+        if (updateAfterPermission && packageManager.canRequestPackageInstalls()) {
+            updateAfterPermission = false
+            confirmUpdate()
+        }
     }
 
     private fun onLoginPage() = pageHost == LOGIN_HOST
@@ -1026,6 +1051,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             .setMessage(
                 "Bruger telefonens NFC som RFID-læser i Cicero Mobile.\n\n" +
                     "NFClibra er ikke lavet af eller godkendt af Systematic. Cicero er Systematics produkt.\n\n" +
+                    "Sikkerhed: NFClibra låser efter 2 minutter uden brug og med det samme, når skærmen slukkes eller app'en forlades. " +
+                    "RFID-serveren på telefonen tager kun imod Cicero inde i NFClibra – ikke andre apps eller hjemmesider.\n\n" +
                     "Designet og testet af Kasper Svangren, Gladsaxe Bibliotekerne. Kodet med AI-assistance (Claude).\n\n" +
                     "Tak til Deichman bibliotek i Oslo for go-feig (MIT-licens), hvis protokol Cicero taler med RFID-læseren. " +
                     "Der er ikke kopieret kode.",
@@ -1484,7 +1511,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 val h = Uri.decode(u.host ?: "").lowercase()
                 checkRfidSetup(u, scheme, h)
                 if (scheme != "http") return null
-                if (h in Hub.LOCAL_HOSTS) return null
+                if (h in Hub.LOCAL_HOSTS) {
+                    // Billet til serveren: denne forespørgsel kommer fra Cicero inde i NFClibra
+                    if (u.port == Server.PORT) Server.expect(u.path ?: "/")
+                    return null
+                }
                 if (blockedHosts.add(h)) LogBuf.add("Blokeret usikker forbindelse til '$h'")
                 return WebResourceResponse(
                     "text/plain", "utf-8", 403, "Forbidden",
@@ -1622,7 +1653,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     override fun onResume() {
         super.onResume()
         LogBuf.add("App'en i forgrunden")
-        // Lås, hvis app'en ikke har været brugt i 5 minutter (også mens den var i baggrunden)
+        // Lås, hvis app'en ikke har været brugt i 2 minutter (også mens den var i baggrunden)
         if (isDeviceSecure()) {
             if (!Hub.locked && !onLoginPage() && SystemClock.elapsedRealtime() - Hub.lastActivity >= LOCK_AFTER_MS) lock()
             refreshLockUi()
@@ -1635,7 +1666,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         handler.postDelayed(lockTicker, 10_000)
         Updater.check(this)
         // Kommer tilbage fra "Tillad installation af apps" – fortsæt opdateringen
-        if (updateAfterPermission && packageManager.canRequestPackageInstalls()) {
+        if (!Hub.locked && updateAfterPermission && packageManager.canRequestPackageInstalls()) {
             updateAfterPermission = false
             confirmUpdate()
         }

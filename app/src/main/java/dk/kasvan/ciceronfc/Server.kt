@@ -39,6 +39,36 @@ object Server {
 
     private class SseClient(val out: OutputStream)
 
+    /**
+     * Billetter: hver gang Cicero inde i NFClibra sender en forespørgsel til serveren, ser app'en den først
+     * (WebView'ets shouldInterceptRequest) og udsteder en billet til netop den adresse. Serveren tager kun
+     * imod forespørgsler med en billet – så andre apps på telefonen kan ikke styre RFID-læseren.
+     */
+    private val tickets = ArrayList<Pair<String, Long>>()
+    private const val TICKET_MS = 10_000L
+
+    private fun norm(path: String) = path.trimEnd('/').ifEmpty { "/" }
+
+    fun expect(path: String) {
+        val now = SystemClock.elapsedRealtime()
+        synchronized(tickets) {
+            tickets.removeAll { now - it.second > TICKET_MS }
+            if (tickets.size < 200) tickets += norm(path) to now
+        }
+    }
+
+    private fun takeTicket(path: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val p = norm(path)
+        synchronized(tickets) {
+            tickets.removeAll { now - it.second > TICKET_MS }
+            val i = tickets.indexOfFirst { it.first == p }
+            if (i < 0) return false
+            tickets.removeAt(i)
+            return true
+        }
+    }
+
     private val clients = CopyOnWriteArrayList<SseClient>()
     private val sseExec = Executors.newSingleThreadExecutor()
 
@@ -148,6 +178,14 @@ object Server {
                     extra += "Access-Control-Allow-Private-Network: true"
                 }
                 respond(out, 204, "text/plain", "", origin, extra)
+                sock.close()
+                return
+            }
+
+            // Kun forespørgsler, som Cicero inde i NFClibra har sendt (se billetter ovenfor)
+            if (!takeTicket(req.path)) {
+                LogBuf.add("Afvist forespørgsel uden om NFClibra (${req.path.take(40)})")
+                respond(out, 403, "text/plain", "Forbidden", null)
                 sock.close()
                 return
             }

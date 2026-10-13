@@ -295,7 +295,7 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    /** Tryk tæller som brug; er app'en låst eller glemt i 5 minutter, lukkes kameraet i stedet */
+    /** Tryk tæller som brug; er app'en låst eller glemt i 2 minutter, lukkes kameraet i stedet */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
         Hub.lastActivity = SystemClock.elapsedRealtime()
@@ -307,7 +307,7 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
-        // Kommer man tilbage efter mere end 5 minutter, lukkes kameraet og værktøjet, så app'en låser
+        // Kommer man tilbage efter mere end 2 minutter, lukkes kameraet og værktøjet, så app'en låser
         if (Hub.locked || Hub.idleTooLong()) { finish(); return }
         try {
             nfc?.enableReaderMode(this, this,

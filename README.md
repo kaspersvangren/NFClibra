@@ -77,15 +77,18 @@ App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Hver tilpasning
   når app'en lukkes. Den skrives ikke til telefonens systemlog. Går app'en ned, gemmes en kort
   fejlbeskrivelse (uden lånerdata) i en fil, som lægges i loggen ved næste start og derefter slettes.
 - Intet følger med til skyen eller en ny telefon.
-- App'en tjekker GitHub for nye versioner (højst hver 6. time) og tilbyder at opdatere sig selv.
+- App'en tjekker GitHub for nye versioner (højst hvert 15. minut, via en lille versionsfil) og tilbyder at opdatere sig selv.
   Der sendes ingen data; den spørger kun efter seneste version. Android installerer kun en
   opdatering med samme digitale segl som den installerede app.
-- App'en låser sig efter 5 minutter uden brug og ved opstart – også når Værktøj til tags eller
+- App'en låser sig efter 2 minutter uden brug, med det samme når skærmen slukkes eller man skifter
+  til en anden app, og ved opstart – også når Værktøj til tags eller
   kameraet står fremme. Den låses op med telefonens egen skærmlås (fingeraftryk, ansigt eller pinkode).
   Mens den er låst, er Cicero skjult, og bøger hverken læses eller ændres. Værktøj til tags kræver
   altid oplåsning, også når Cicero står på login-siden.
 - Den lokale server svarer kun forespørgsler fra Cicero Mobile
-  (`https://cicero.systematic.com`) rettet til localhost.
+  (`https://cicero.systematic.com`) rettet til localhost – og kun dem, som Cicero inde i NFClibra
+  faktisk har sendt (app'en ser hver forespørgsel først og udsteder en billet). Andre apps på
+  telefonen kan derfor ikke styre RFID-læseren.
 - Kameraet (scanning af lånerkort) gives kun til Ciceros egen side, og pinkoden sendes kun dertil.
 - Andre hjemmesider end Cicero og login åbnes i telefonens browser, ikke i app'en.
 - Ukrypteret forbindelse er kun tilladt til app'ens egen server på telefonen.

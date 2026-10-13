@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Sikkerhed: app'en låser efter 2 minutter uden brug (før 5) og med det samme, når skærmen slukkes eller man skifter til en anden app. RFID-serveren tager kun imod forespørgsler, som Cicero inde i NFClibra har sendt – ikke fra andre apps på telefonen.
 - **0.1.76** – Indstillinger: hver tilpasning af Cicero kan slås til og fra for sig (eller alle på én gang), og "Vend" hører nu under pinkode-tastaturet. Bjælken skifter lys/mørk i samme øjeblik som Cicero (læser Ciceros egen indstilling). Guiden er opdateret.
 - **0.1.75** – Loggen viser midlertidigt, hvor Cicero gemmer lys/mørk (til hurtigere farveskift i bjælken).
 - **0.1.74** – Tags-knappen er lige så høj som cirklen i navnet og får ikke længere en firkant ved tryk – den bliver i stedet lidt mørkere.

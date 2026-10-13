@@ -792,7 +792,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Låsen",
-            "NFClibra låser sig efter 5 minutter uden brug og låses op med fingeraftryk eller pinkode. Mens den er låst, er Cicero skjult, og bøger læses ikke.",
+            "NFClibra låser sig efter 2 minutter uden brug – og med det samme, når skærmen slukkes eller du skifter til en anden app. Den låses op med fingeraftryk eller pinkode. Mens den er låst, er Cicero skjult, og bøger læses ikke.",
         ) {
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -836,7 +836,7 @@ class GuideActivity : ComponentActivity() {
         }
     }
 
-    /** Tryk tæller som brug; er app'en låst eller glemt i 5 minutter, lukkes guiden */
+    /** Tryk tæller som brug; er app'en låst eller glemt i 2 minutter, lukkes guiden */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
         Hub.lastActivity = SystemClock.elapsedRealtime()

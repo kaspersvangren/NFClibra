@@ -67,7 +67,7 @@ object Hub {
     /** Adresser, der betyder "denne telefon" – Ciceros RFID-opsætning og app'ens egen server */
     val LOCAL_HOSTS = setOf("localhost", "127.0.0.1", "::1", "[::1]")
 
-    /** Ingen tryk i 5 minutter: så skal app'en låses, uanset hvilken skærm der er fremme */
+    /** Ingen tryk i 2 minutter: så skal app'en låses, uanset hvilken skærm der er fremme */
     fun idleTooLong() = SystemClock.elapsedRealtime() - lastActivity >= MainActivity.LOCK_AFTER_MS
 
     /**
@@ -108,6 +108,28 @@ object Hub {
     /** Låst = Cicero er dækket og bøger læses ikke. Låst fra start, så login ikke kan bruges af andre. */
     @Volatile var locked = true
     @Volatile var lastActivity = 0L
+
+    /** Antal af app'ens skærme, der er fremme. Falder den til 0 (skærmen slukket, anden app), låses der. */
+    private var started = 0
+    private var lifecycleWatched = false
+    var onBackground: (() -> Unit)? = null
+
+    fun watchLifecycle(app: android.app.Application) {
+        if (lifecycleWatched) return
+        lifecycleWatched = true
+        app.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityStarted(a: android.app.Activity) { started++ }
+            override fun onActivityStopped(a: android.app.Activity) {
+                started = (started - 1).coerceAtLeast(0)
+                if (started == 0 && !a.isChangingConfigurations) onBackground?.invoke()
+            }
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+            override fun onActivityResumed(a: android.app.Activity) {}
+            override fun onActivityPaused(a: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) {}
+        })
+    }
 
     /** Cicero har kaldt RFID-serveren, siden app'en startede (= Cicero er sat op til NFClibra) */
     @Volatile var ciceroContacted = false

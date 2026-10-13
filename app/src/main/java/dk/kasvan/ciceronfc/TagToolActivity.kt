@@ -878,7 +878,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     /**
      * Ethvert tryk tæller som brug, så app'en ikke låser midt i arbejdet. Er app'en låst eller
-     * har den ikke været brugt i 5 minutter, lukkes værktøjet i stedet, og hovedskærmen låser.
+     * har den ikke været brugt i 2 minutter, lukkes værktøjet i stedet, og hovedskærmen låser.
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
@@ -888,7 +888,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     private val idleCheck = object : Runnable {
         override fun run() {
-            // 5 minutter uden brug: luk værktøjet, så app'en låser som normalt
+            // 2 minutter uden brug: luk værktøjet, så app'en låser som normalt
             if (Hub.locked || Hub.idleTooLong()) { finish(); return }
             handler.postDelayed(this, 10_000)
         }
@@ -896,7 +896,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
-        // Kommer man tilbage efter mere end 5 minutter, må værktøjet ikke stå åbent uden oplåsning
+        // Kommer man tilbage efter mere end 2 minutter, må værktøjet ikke stå åbent uden oplåsning
         if (Hub.locked || Hub.idleTooLong()) { finish(); return }
         val opts = Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500) }
         nfc?.enableReaderMode(
