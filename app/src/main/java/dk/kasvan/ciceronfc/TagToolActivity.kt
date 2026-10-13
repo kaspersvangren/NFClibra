@@ -681,7 +681,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             val i = info
             if (t == null || i == null || !present) {
                 say("Hold et tag mod telefonen først", orange)
-                return@execute
+                return@bg
             }
             try {
                 val msg = f(t, i)
