@@ -550,7 +550,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             val left = FORGET_AFTER_MS - (SystemClock.elapsedRealtime() - goneAt)
             if (left <= 0) {
                 val at = goneAt
-                exec.execute {
+                bg {
                     if (!present && goneAt == at) {
                         info = null
                         tag?.close(); tag = null
@@ -568,7 +568,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // ---------- NFC ----------
 
     override fun onTagDiscovered(t: Tag) {
-        exec.execute { handleTag(t) }
+        bg { handleTag(t) }
     }
 
     private fun handleTag(t: Tag) {
@@ -676,7 +676,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     /** Kør en handling på tagget ved telefonen; læs det igen bagefter, så kortet viser det rigtige */
     private fun withTag(what: String, f: (PhoneTag, Info) -> String) {
-        exec.execute {
+        bg {
             val t = tag
             val i = info
             if (t == null || i == null || !present) {
@@ -749,7 +749,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
         if (!single) part = 1
         val p = Pending(barcode, part, total, single && total > 1)
-        exec.execute {
+        bg {
             pending = p
             lastWrittenMac = null
             confirmedMac = null
@@ -763,7 +763,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun disarm(msg: String?) {
-        exec.execute {
+        bg {
             pending = null
             askingMac = null
             runOnUiThread {
@@ -792,8 +792,8 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 AlertDialog.Builder(this)
                     .setTitle("Overskriv?")
                     .setMessage("Chippen har allerede $what. Vil du overskrive den med ${p.barcode}?")
-                    .setPositiveButton("Overskriv") { _, _ -> exec.execute { confirmedMac = i.mac; askingMac = null; maybeProgram() } }
-                    .setNegativeButton("Annuller") { _, _ -> exec.execute { askingMac = null }; disarm("Ikke overskrevet") }
+                    .setPositiveButton("Overskriv") { _, _ -> bg { confirmedMac = i.mac; askingMac = null; maybeProgram() } }
+                    .setNegativeButton("Annuller") { _, _ -> bg { askingMac = null }; disarm("Ikke overskrevet") }
                     .setCancelable(false)
                     .show().also { Hub.countTouches(it) }
             }
@@ -925,7 +925,15 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     override fun onDestroy() {
         super.onDestroy()
         LogBuf.add("Værktøj til tags lukket")
-        exec.execute { tag?.close() }
+        // Stop alle nedtællinger (fx "glem chippen"), så intet når at køre, efter værktøjet er lukket
+        handler.removeCallbacksAndMessages(null)
+        bg { tag?.close() }
         exec.shutdown()
+    }
+
+    /** Arbejde med chippen i baggrunden – ignoreres, hvis værktøjet allerede er lukket */
+    private fun bg(f: () -> Unit) {
+        if (exec.isShutdown) return
+        try { exec.execute(f) } catch (_: java.util.concurrent.RejectedExecutionException) {}
     }
 }
