@@ -110,7 +110,7 @@ object Hub {
     @Volatile var lastActivity = 0L
 
     /** Antal af app'ens skærme, der er fremme. Falder den til 0 (skærmen slukket, anden app), låses der. */
-    private var started = 0
+    private var visibleScreens = 0
     private var lifecycleWatched = false
     var onBackground: (() -> Unit)? = null
 
@@ -118,10 +118,10 @@ object Hub {
         if (lifecycleWatched) return
         lifecycleWatched = true
         app.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
-            override fun onActivityStarted(a: android.app.Activity) { started++ }
+            override fun onActivityStarted(a: android.app.Activity) { visibleScreens++ }
             override fun onActivityStopped(a: android.app.Activity) {
-                started = (started - 1).coerceAtLeast(0)
-                if (started == 0 && !a.isChangingConfigurations) onBackground?.invoke()
+                visibleScreens = (visibleScreens - 1).coerceAtLeast(0)
+                if (visibleScreens == 0 && !a.isChangingConfigurations) onBackground?.invoke()
             }
             override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
             override fun onActivityResumed(a: android.app.Activity) {}
