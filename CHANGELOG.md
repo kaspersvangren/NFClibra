@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Telefonens tastatur popper ikke længere op, når Cicero selv sætter markøren i Låner, telefon eller Materialenummer (feltet røres ikke, så Aflever virker stadig).
+- **0.1.80** – Telefonens tastatur popper ikke længere op, når Cicero selv sætter markøren i Låner, telefon eller Materialenummer (feltet røres ikke, så Aflever virker stadig).
 - **0.1.79** – Tastaturet til Låner, telefon og materialenummer kommer kun, når man selv trykker i feltet – ikke når Cicero sætter markøren. Det rører heller ikke felterne før da (det fik Aflever til at ignorere bøger). Værktøj til tags: jeres eget biblioteksnummer står som "Vores bibliotek" i en boks for sig, og feltet fra chippen hedder "Bibliotek på chip".
 - **0.1.78** – Sikkerhed: app'en låser efter 2 minutter uden brug (før 5) og med det samme, når skærmen slukkes eller man skifter til en anden app. RFID-serveren tager kun imod forespørgsler, som Cicero inde i NFClibra har sendt – ikke fra andre apps på telefonen.
 - **0.1.76** – Indstillinger: hver tilpasning af Cicero kan slås til og fra for sig (eller alle på én gang), og "Vend" hører nu under pinkode-tastaturet. Bjælken skifter lys/mørk i samme øjeblik som Cicero (læser Ciceros egen indstilling). Guiden er opdateret.
