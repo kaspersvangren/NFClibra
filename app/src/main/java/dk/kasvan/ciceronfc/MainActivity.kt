@@ -1293,6 +1293,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { onKeysFieldFocused(mode) }
         }
 
+        /** Cicero satte selv markøren i et af tastatur-felterne: skjul telefonens tastatur (feltet røres ikke) */
+        @JavascriptInterface
+        fun keysSuppress() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread {
+                val imm = getSystemService(InputMethodManager::class.java) ?: return@runOnUiThread
+                imm.hideSoftInputFromWindow(web.windowToken, 0)
+                // Android kan vise tastaturet lidt efter fokus – skjul igen, medmindre brugeren selv har trykket
+                handler.postDelayed({ if (!staffKeys.isShowing) imm.hideSoftInputFromWindow(web.windowToken, 0) }, 250)
+            }
+        }
+
         @JavascriptInterface
         fun keysBlur() {
             if (pageHost != CICERO_HOST) return
@@ -2072,7 +2084,13 @@ private val LANER_KEYS_JS = """
   // Felter med tal-agtige navne, der ikke genkendes, nævnes i loggen (kun navnet)
   document.addEventListener('focusin', function (e) {
     var el = e.target;
-    if (!usable(el) || kind(el)) return;
+    // Cicero satte selv markøren i et af felterne (ikke brugerens tryk): bed app'en skjule telefonens
+    // tastatur igen – uden at røre feltet
+    if (kind(el)) {
+      if (!el.__cnfcMine) { try { CiceroNFC.keysSuppress(); } catch (x) {} }
+      return;
+    }
+    if (!usable(el)) return;
     if (el.type === 'number' || /^(numeric|decimal|tel)$/.test(el.getAttribute('inputmode') || '')) return;
     var name = labelOf(el).replace(/\s+/g, ' ').trim().slice(0, 40);
     var hint = name.toLowerCase();
