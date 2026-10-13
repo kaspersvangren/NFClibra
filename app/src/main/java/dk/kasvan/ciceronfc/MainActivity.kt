@@ -812,6 +812,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             prefs().edit().putString("ciceroTheme", theme).apply()
             LogBuf.add("Tema skiftet til $name ($how)")
             applyPalette()
+            web.evaluateJavascript(THEME_PROBE_JS, null)
         }
     }
 
@@ -1418,7 +1419,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 // Én gang efter login: er Ciceros RFID-opsætning (Enhedsindstillinger) sat til NFClibra?
                 if (!scannerChecked && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
                     scannerChecked = true
-                    handler.postDelayed({ runScannerCheck() }, 4000)
+                    handler.postDelayed({ runScannerCheck(); web.evaluateJavascript(THEME_PROBE_JS, null) }, 4000)
                 }
                 injectPinWatcher()
                 if (prefs().getBoolean(PREF_TWEAKS, true)) {
@@ -2211,6 +2212,23 @@ private val SCANNER_CHECK_JS = """
   var r = v === null ? 'mangler' :
     'localhost=' + (v.indexOf('localhost') >= 0 ? 'ja' : 'nej') + ',port=' + (v.indexOf('%PORT%') >= 0 ? 'ja' : 'nej');
   try { CiceroNFC.scannerCheck(r); } catch (x) {}
+})();
+"""
+
+/**
+ * Midlertidigt: hvor Cicero holder styr på lys/mørk – værdien af indstillingen DK-…_THEME og klassenavnene
+ * på <html> og <body>. Ingen personlige data. Bruges til at gøre temaskift hurtigere.
+ */
+private val THEME_PROBE_JS = """
+(function () {
+  if (location.hostname !== 'cicero.systematic.com') return;
+  var v = 'mangler';
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i) || '';
+    if (/_THEME${'$'}/.test(k)) { v = String(localStorage.getItem(k)).slice(0, 30); break; }
+  }
+  function cls(el) { return el ? (el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || '').toString().slice(0, 120) : ''; }
+  try { CiceroNFC.tweak('Tema-spor: THEME=' + v + ' · html=' + cls(document.documentElement) + ' · body=' + cls(document.body)); } catch (x) {}
 })();
 """
 

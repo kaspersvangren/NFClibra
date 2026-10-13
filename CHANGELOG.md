@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Loggen viser midlertidigt, hvor Cicero gemmer lys/mørk (til hurtigere farveskift i bjælken).
 - **0.1.74** – Tags-knappen er lige så høj som cirklen i navnet og får ikke længere en firkant ved tryk – den bliver i stedet lidt mørkere.
 - **0.1.73** – Lige efter login tjekker app'en Ciceros RFID-opsætning (Enhedsindstillinger) direkte, uanset side. Er den ikke sat til NFClibra, tilbydes "Sæt op" (højst to gange). Logningen af gemte navne er fjernet igen.
 - **0.1.72** – Tags-knappen står midt mellem logo og navn. Tilbuddet om at sætte Cicero op ved sidevisning er fjernet (det kom også på sider uden RFID). Loggen viser midlertidigt navnene på Ciceros gemte indstillinger (ikke indholdet).
