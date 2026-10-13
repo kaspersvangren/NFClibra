@@ -186,12 +186,15 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             setPadding(dp(16), dp(4), dp(4), dp(4))
             setOnClickListener { askLibrary(null) }
         }
+        // Jeres eget biblioteksnummer (det, der skrives på nye chips) – tydeligt adskilt fra det, chippen siger
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(tileBg); cornerRadius = dp(10).toFloat() }
+            setPadding(dp(12), dp(6), dp(4), dp(6))
             addView(libraryText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(editLib)
-        })
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         updateLibraryText()
 
         // Kortet med tagget: status, materialenummer stort, og et felt for hver oplysning
@@ -427,7 +430,13 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     private fun updateLibraryText() {
         val lib = Hub.configuredLibrary
-        libraryText.text = if (lib != null) "Bibliotek: DK-$lib" else "Bibliotek: ikke sat"
+        val value = if (lib != null) "DK-$lib" else "ikke sat"
+        libraryText.text = SpannableStringBuilder("Vores bibliotek  ").apply {
+            val start = length
+            append(value)
+            setSpan(ForegroundColorSpan(fg), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(StyleSpan(Typeface.BOLD), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     private fun say(text: String, color: Int) {
@@ -467,7 +476,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     /** Altid de samme fire felter i samme rækkefølge, så intet hopper; "–" når der ikke er noget at vise */
     private fun fieldsFor(i: Info?): List<Field> {
-        if (i == null) return listOf(Field("Del", "–"), Field("Bibliotek", "–"), Field("Alarm", "–"), Field("Chip", "–"))
+        if (i == null) return listOf(Field("Del", "–"), Field("Bibliotek på chip", "–"), Field("Alarm", "–"), Field("Chip", "–"))
         val c = i.content
         val danish = c != null && i.danish && !i.blank
         val del = when {
@@ -477,11 +486,11 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
         val own = Hub.configuredLibrary
         val lib = when {
-            i.blank -> Field("Bibliotek", "–")
-            !danish -> Field("Bibliotek", "ikke dansk format", Kind.WARN)
-            c!!.library.isEmpty() -> Field("Bibliotek", "ikke angivet", Kind.WARN)
-            own != null && c.library != own -> Field("Bibliotek", "${c.country}-${c.library}", Kind.WARN)
-            else -> Field("Bibliotek", "${c.country}-${c.library}")
+            i.blank -> Field("Bibliotek på chip", "–")
+            !danish -> Field("Bibliotek på chip", "ikke dansk format", Kind.WARN)
+            c!!.library.isEmpty() -> Field("Bibliotek på chip", "ikke angivet", Kind.WARN)
+            own != null && c.library != own -> Field("Bibliotek på chip", "${c.country}-${c.library}", Kind.WARN)
+            else -> Field("Bibliotek på chip", "${c.country}-${c.library}")
         }
         val alarm = when (i.afi) {
             Hub.AFI_ON -> Field("Alarm", "Til", Kind.ALARM_ON)

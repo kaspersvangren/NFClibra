@@ -1993,8 +1993,9 @@ private val PIN_FILL_JS = """
 """
 
 /**
- * Felterne Låner, telefonnumre og Materialenummer: telefonens tastatur holdes væk (inputmode="none"),
- * og app'en viser sit eget tastatur, så længe feltet har fokus. "ABC" giver telefonens tastatur, indtil
+ * Felterne Låner, telefonnumre og Materialenummer: trykker brugeren selv i feltet, holdes telefonens
+ * tastatur væk (inputmode="none"), og app'en viser sit eget, så længe feltet har fokus. Sætter Cicero selv
+ * markøren i feltet, røres feltet ikke (ellers ignorerede Cicero RFID i Aflever). "ABC" giver telefonens tastatur, indtil
  * feltet forlades. Felter med tal-agtige navne, der ikke genkendes, nævnes i loggen (kun navnet, aldrig
  * indholdet), så de kan tilføjes.
  */
@@ -2035,56 +2036,60 @@ private val LANER_KEYS_JS = """
     if (t === 'andet' && phoneIcon(el)) return 'phone';
     return null;
   }
-  function mark() {
-    var list = document.querySelectorAll('input');
-    for (var i = 0; i < list.length; i++) {
-      var el = list[i];
-      if (!el.__cnfcAbc && el.getAttribute('inputmode') !== 'none' && kind(el)) el.setAttribute('inputmode', 'none');
-    }
+  // Feltet røres først, når brugeren selv trykker i det – når Cicero selv sætter markøren, er feltet urørt
+  function claim(el) {
+    if (!el.__cnfcMine) el.__cnfcOrig = el.getAttribute('inputmode');
+    el.setAttribute('inputmode', 'none');
+    el.__cnfcMine = true;
   }
-  mark();
-  setInterval(mark, 700);
+  function release(el) {
+    if (!el.__cnfcMine) return;
+    el.__cnfcMine = false;
+    el.__cnfcAbc = false;
+    if (el.__cnfcOrig == null) el.removeAttribute('inputmode'); else el.setAttribute('inputmode', el.__cnfcOrig);
+  }
+  function inputFor(target) {
+    if (!target || !target.closest) return null;
+    if (target.tagName === 'INPUT') return target;
+    if (target.closest('button, [role=button], a')) return null;  // fx kamera- eller RFID-knappen i feltet
+    var ff = fieldOf(target);
+    return ff ? ff.querySelector('input') : null;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    var el = inputFor(e.target);
+    var k = el && kind(el);
+    if (!k || el.__cnfcAbc) return;
+    claim(el);
+    window.__cnfcKeysEl = el;
+    window.__cnfcKeysKind = k;
+  }, true);
+  // Efter trykket (og når man trykker igen i et felt, der allerede har fokus): vis tastaturet
+  document.addEventListener('click', function () {
+    var el = document.activeElement;
+    if (!el || !el.__cnfcMine || el.__cnfcAbc || el !== window.__cnfcKeysEl) return;
+    try { CiceroNFC.keysFocus(window.__cnfcKeysKind); } catch (x) {}
+  }, true);
+  // Felter med tal-agtige navne, der ikke genkendes, nævnes i loggen (kun navnet)
   document.addEventListener('focusin', function (e) {
     var el = e.target;
-    var k = kind(el);
-    if (!k) {
-      if (!usable(el)) return;
-      var name = labelOf(el).replace(/\s+/g, ' ').trim().slice(0, 40);
-      var hint = name.toLowerCase();
-      if (/pin/.test(hint)) return;
-      // Felter, der allerede får taltastatur fra Cicero (type number/tel, inputmode), nævnes ikke
-      if (el.type === 'number' || /^(numeric|decimal|tel)$/.test(el.getAttribute('inputmode') || '')) return;
-      if (/nummer|nr\b|tlf|telefon|mobil|cpr|kort|andet|fax|kode/.test(hint)) {
-        var key = name + '|' + el.type;
-        if (!reported[key]) {
-          reported[key] = true;
-          try { CiceroNFC.tweak('Felt uden tastatur: "' + name + '" (type ' + el.type + ')'); } catch (x) {}
-        }
-      }
-      return;
-    }
-    window.__cnfcKeysEl = el;
-    if (el.__cnfcAbc) return;
-    el.setAttribute('inputmode', 'none');
-    try { CiceroNFC.keysFocus(k); } catch (x) {}
-  }, true);
-  // Tryk i et felt, der allerede har fokus (fx efter "skjul"): vis tastaturet igen
-  document.addEventListener('click', function (e) {
-    var el = e.target;
-    if (el !== document.activeElement || el.__cnfcAbc) return;
-    var k = kind(el);
-    if (!k) return;
-    window.__cnfcKeysEl = el;
-    try { CiceroNFC.keysFocus(k); } catch (x) {}
+    if (!usable(el) || kind(el)) return;
+    if (el.type === 'number' || /^(numeric|decimal|tel)$/.test(el.getAttribute('inputmode') || '')) return;
+    var name = labelOf(el).replace(/\s+/g, ' ').trim().slice(0, 40);
+    var hint = name.toLowerCase();
+    if (/pin/.test(hint) || !/nummer|nr\b|tlf|telefon|mobil|cpr|kort|andet|fax|kode/.test(hint)) return;
+    var key = name + '|' + el.type;
+    if (reported[key]) return;
+    reported[key] = true;
+    try { CiceroNFC.tweak('Felt uden tastatur: "' + name + '" (type ' + el.type + ')'); } catch (x) {}
   }, true);
   document.addEventListener('focusout', function (e) {
     var el = e.target;
-    if (el !== window.__cnfcKeysEl) return;
+    if (!el || !el.__cnfcMine) return;
     setTimeout(function () {
       if (document.activeElement === el) return;
-      if (el.__cnfcAbc) { el.__cnfcAbc = false; el.setAttribute('inputmode', 'none'); }
+      release(el);
       // Gået videre til et andet felt med tastaturet: det felt har allerede bedt om det
-      if (window.__cnfcKeysEl !== el || kind(document.activeElement)) return;
+      if (window.__cnfcKeysEl !== el) return;
       try { CiceroNFC.keysBlur(); } catch (x) {}
     }, 150);
   }, true);
