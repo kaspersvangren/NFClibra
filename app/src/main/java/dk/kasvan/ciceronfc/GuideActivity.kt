@@ -365,7 +365,7 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Menuen",
-            "Tandhjulet øverst til højre åbner menuen. Under Indstillinger kan du fx slå lyd og pinkode-tastaturet til og fra. Guiden finder du igen her.",
+            "Tandhjulet øverst til højre åbner menuen. Under Indstillinger vælger du fx lyd, pinkode-tastatur og hvilke ændringer af Cicero du vil have. Sæt Cicero op udfylder Ciceros RFID-opsætning for dig. Guiden finder du igen her.",
         ) {
             fun item(res: Int, t: String, hi: Boolean = false) = hrow(icon(res, if (hi) tc.blue else tc.sub, 18), text(t, 15f, if (hi) tc.blue else tc.fg, hi), gap = 12).apply {
                 setPadding(dp(6), dp(6), dp(16), dp(6))
@@ -375,6 +375,7 @@ class GuideActivity : ComponentActivity() {
                 item(R.drawable.ic_menu_reload, "Genindlæs Cicero"),
                 item(R.drawable.ic_menu_lock, "Lås nu"),
                 item(R.drawable.ic_menu_settings, "Indstillinger", true),
+                item(R.drawable.ic_menu_setup, "Sæt Cicero op"),
                 item(R.drawable.ic_menu_update, "Søg efter opdatering"),
                 item(R.drawable.ic_menu_help, "Guide", true),
                 View(this).apply { setBackgroundColor(tc.key); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply { setMargins(0, dp(6), 0, dp(8)) } },
@@ -765,33 +766,29 @@ class GuideActivity : ComponentActivity() {
         },
         Page(
             "Kun NFC?",
-            "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan du slå alle ændringerne af Cicero fra – swipe-faner, pinkode-kontakten, Nulstil/Søg-pillen og Låner-tastaturet. Så ser Cicero ud præcis som normalt.",
+            "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan hver ændring af Cicero slås til og fra for sig – eller alle på én gang. Slår du dem alle fra, ser Cicero ud præcis som normalt.",
         ) {
-            fun box(on: Boolean) = TextView(this).apply {
-                text = if (on) "✓" else ""
-                textSize = 15f
-                gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
-                background = if (on) rounded(tc.blue, 4) else rounded(Color.TRANSPARENT, 4, tc.sub)
-                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
+            fun row(t: String, sw: Switch) = hrow(text(t, 14f).apply { layoutParams = LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT) }, sw.view).apply {
+                setPadding(0, dp(6), 0, dp(6))
             }
-            fun row(t: String, b: View) = hrow(text(t, 15f).apply { layoutParams = LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT) }, b).apply {
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            val tweaks = box(true)
-            loop(1600) { n ->
-                val on = n % 2 == 0
-                tweaks.text = if (on) "✓" else ""
-                tweaks.background = if (on) rounded(tc.blue, 4) else rounded(Color.TRANSPARENT, 4, tc.sub)
-            }
-            card(
-                text("Indstillinger", 17f, tc.fg, true).apply { setPadding(0, 0, 0, dp(6)) },
-                row("Lyd ved alarmskift", box(true)),
-                row("Pinkode-tastatur", box(true)),
-                row("Vend pinkode-tastatur", box(false)),
-                row("Tilpasninger af Cicero", tweaks),
+            val names = listOf("Swipe-faner", "Pinkode-kontakt i Udlån", "Nulstil/Søg-pille", "Tastatur til Låner m.fl.", "Tags-knap i bjælken")
+            val sws = names.map { Switch(true) }
+            val c = card(
+                text("Indstillinger", 17f, tc.fg, true).apply { setPadding(0, 0, 0, dp(4)) },
+                text("Tilpasninger af Cicero", 12f, tc.blue, true).apply { setPadding(0, dp(6), 0, dp(2)) },
                 pad = 16,
             )
+            names.forEachIndexed { i, n -> c.addView(row(n, sws[i])) }
+            c.addView(text("Slå alle fra", 13f, tc.blue, true).apply { setPadding(0, dp(8), 0, 0) })
+            // Kontakterne slås fra én ad gangen – og til igen
+            loop(450) { n ->
+                val k = n % 14
+                when {
+                    k < 5 -> sws[k].set(false)
+                    k in 7..11 -> sws[k - 7].set(true)
+                }
+            }
+            c
         },
         Page(
             "Låsen",

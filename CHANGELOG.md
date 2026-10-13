@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Indstillinger: hver tilpasning af Cicero kan slås til og fra for sig (eller alle på én gang), og "Vend" hører nu under pinkode-tastaturet. Bjælken skifter lys/mørk i samme øjeblik som Cicero (læser Ciceros egen indstilling). Guiden er opdateret.
 - **0.1.75** – Loggen viser midlertidigt, hvor Cicero gemmer lys/mørk (til hurtigere farveskift i bjælken).
 - **0.1.74** – Tags-knappen er lige så høj som cirklen i navnet og får ikke længere en firkant ved tryk – den bliver i stedet lidt mørkere.
 - **0.1.73** – Lige efter login tjekker app'en Ciceros RFID-opsætning (Enhedsindstillinger) direkte, uanset side. Er den ikke sat til NFClibra, tilbydes "Sæt op" (højst to gange). Logningen af gemte navne er fjernet igen.

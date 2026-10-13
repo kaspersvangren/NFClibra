@@ -68,7 +68,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val CICERO_HOST = "cicero.systematic.com"
         const val PREF_PIN_PAD = "pinPad"
         const val PREF_PIN_FLIP = "pinPadFlip"
-        const val PREF_TWEAKS = "ciceroTweaks" // app'ens ændringer af Ciceros udseende
+        const val PREF_TWEAKS = "ciceroTweaks" // tidligere fælles kontakt; nu kun udgangspunkt for de enkelte
+        // De enkelte tilpasninger af Cicero
+        const val TW_SWIPE = "tweakSwipe"
+        const val TW_PIN = "tweakPinSwitch"
+        const val TW_PILL = "tweakPill"
+        const val TW_KEYS = "tweakKeys"
+        const val TW_TAGS = "tweakTags"
         const val PREF_SOUND = "sound"
         const val PREF_PIN_BIG = "pinPadBig"
     }
@@ -792,7 +798,40 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var pendingTheme: String? = null
     private var themeLogged = false
 
+    /** Ciceros indstilling DK-…_THEME ("LIGHT"/"DARK") – null, hvis den ikke findes eller ikke kan forstås */
+    private fun themeFromSetting(v: String?): String? = when {
+        v == null -> null
+        v.contains("DARK", ignoreCase = true) -> "dark"
+        v.contains("LIGHT", ignoreCase = true) -> "light"
+        else -> null
+    }
+
+    private var themeBySetting = false
+
+    /** Ciceros indstilling skiftede (eller blev læst) – skift med det samme, uden at vente på en ekstra måling */
+    private fun onCiceroThemeSetting(v: String?) {
+        val theme = themeFromSetting(v)
+        if (theme == null) { themeBySetting = false; return }
+        themeBySetting = true
+        val name = if (theme == "dark") "mørk" else "lys"
+        if (!themeLogged) { themeLogged = true; LogBuf.add("Tema: $name (Ciceros indstilling)") }
+        val newPal = if (theme == "dark") darkPalette else lightPalette
+        pendingTheme = null
+        if (newPal === pal) return
+        pal = newPal
+        prefs().edit().putString("ciceroTheme", theme).apply()
+        LogBuf.add("Tema skiftet til $name (Ciceros indstilling)")
+        applyPalette()
+    }
+
     private fun detectCiceroTheme() {
+        // Først Ciceros egen indstilling; kun hvis den ikke findes, måles farverne på skærmen
+        web.evaluateJavascript(THEME_READ_JS) { r ->
+            if (themeFromSetting(r) != null) onCiceroThemeSetting(r) else measureCiceroTheme()
+        }
+    }
+
+    private fun measureCiceroTheme() {
         web.evaluateJavascript(themeProbe) { result ->
             val j = try { org.json.JSONObject(result ?: "") } catch (_: Exception) { return@evaluateJavascript }
             val theme = j.optString("t")
@@ -812,7 +851,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             prefs().edit().putString("ciceroTheme", theme).apply()
             LogBuf.add("Tema skiftet til $name ($how)")
             applyPalette()
-            web.evaluateJavascript(THEME_PROBE_JS, null)
         }
     }
 
@@ -900,44 +938,83 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         win.showAsDropDown(anchor, 0, 0, Gravity.END)
     }
 
-    /** Alle til/fra-indstillinger samlet ét sted. Ændringer gælder med det samme. */
+    /** En tilpasning af Cicero er slået til (udgangspunkt: den gamle fælles kontakt) */
+    private fun tweakOn(key: String) = prefs().getBoolean(key, prefs().getBoolean(PREF_TWEAKS, true))
+
+    /** Alle indstillinger samlet ét sted. Ændringer gælder med det samme; tilpasninger af Cicero ved lukning. */
     private fun showSettings() {
-        val labels = arrayOf(
-            "Lyd ved alarmskift",
-            "Pinkode-tastatur",
-            "Vend pinkode-tastatur",
-            "Tilpasninger af Cicero",
-        )
-        val checked = booleanArrayOf(
-            prefs().getBoolean(PREF_SOUND, true),
-            prefs().getBoolean(PREF_PIN_PAD, true),
-            prefs().getBoolean(PREF_PIN_FLIP, false),
-            prefs().getBoolean(PREF_TWEAKS, true),
-        )
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), dp(8))
+        }
+        fun header(t: String) = col.addView(TextView(this).apply {
+            text = t
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(pal.blue)
+            setPadding(0, dp(16), 0, dp(4))
+        })
+        fun switch(t: String, on: Boolean, indent: Boolean = false, change: (Boolean) -> Unit) = android.widget.Switch(this).apply {
+            text = t
+            textSize = 16f
+            isChecked = on
+            setPadding(if (indent) dp(24) else 0, dp(8), 0, dp(8))
+            setOnCheckedChangeListener { _, v -> change(v) }
+        }.also { col.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
+
+        header("Generelt")
+        switch("Lyd ved alarmskift", prefs().getBoolean(PREF_SOUND, true)) { on ->
+            prefs().edit().putBoolean(PREF_SOUND, on).apply()
+            Beeper.enabled = on
+            LogBuf.add(if (on) "Lyd slået til" else "Lyd slået fra")
+        }
+
+        header("Pinkode-tastatur")
+        lateinit var flip: android.widget.Switch
+        switch("Stort tastatur til låneren", prefs().getBoolean(PREF_PIN_PAD, true)) { on ->
+            prefs().edit().putBoolean(PREF_PIN_PAD, on).apply()
+            LogBuf.add(if (on) "Pinkode-tastatur slået til" else "Pinkode-tastatur slået fra")
+            injectPinWatcher()
+            flip.isEnabled = on
+        }
+        flip = switch("Vend mod låneren", prefs().getBoolean(PREF_PIN_FLIP, false), indent = true) { on ->
+            if (prefs().getBoolean(PREF_PIN_FLIP, false) != on) toggleFlip()
+        }
+        flip.isEnabled = prefs().getBoolean(PREF_PIN_PAD, true)
+
+        header("Tilpasninger af Cicero")
         var tweaksChanged = false
+        val tweaks = listOf(
+            TW_SWIPE to "Swipe-faner",
+            TW_PIN to "Pinkode-kontakt i Udlån",
+            TW_PILL to "Nulstil/Søg-pille",
+            TW_KEYS to "Tastatur til Låner, telefon og materialenummer",
+            TW_TAGS to "Tags-knap i Ciceros bjælke",
+        )
+        val switches = tweaks.map { (key, label) ->
+            switch(label, tweakOn(key)) { on ->
+                prefs().edit().putBoolean(key, on).apply()
+                LogBuf.add("$label ${if (on) "slået til" else "slået fra"}")
+                tweaksChanged = true
+            }
+        }
+        // Alle på én gang – fx før en fejl meldes til Systematic
+        col.addView(TextView(this).apply {
+            fun label() = if (switches.any { it.isChecked }) "Slå alle fra" else "Slå alle til"
+            text = label()
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(pal.blue)
+            setPadding(0, dp(10), 0, dp(6))
+            setOnClickListener {
+                val on = switches.none { it.isChecked }
+                switches.forEach { it.isChecked = on }
+                text = label()
+            }
+        })
         AlertDialog.Builder(this)
             .setTitle("Indstillinger")
-            .setMultiChoiceItems(labels, checked) { _, which, on ->
-                when (which) {
-                    0 -> {
-                        prefs().edit().putBoolean(PREF_SOUND, on).apply()
-                        Beeper.enabled = on
-                        LogBuf.add(if (on) "Lyd slået til" else "Lyd slået fra")
-                    }
-                    1 -> {
-                        prefs().edit().putBoolean(PREF_PIN_PAD, on).apply()
-                        LogBuf.add(if (on) "Pinkode-tastatur slået til" else "Pinkode-tastatur slået fra")
-                        injectPinWatcher()
-                    }
-                    2 -> if (prefs().getBoolean(PREF_PIN_FLIP, false) != on) toggleFlip()
-                    3 -> {
-                        // Swipe-faner, pinkode-kontakten og knaprækken. Slås fra fx før en fejl meldes til Systematic.
-                        prefs().edit().putBoolean(PREF_TWEAKS, on).apply()
-                        LogBuf.add(if (on) "Tilpasninger af Cicero slået til" else "Tilpasninger af Cicero slået fra – Cicero vises som standard")
-                        tweaksChanged = !tweaksChanged
-                    }
-                }
-            }
+            .setView(ScrollView(this).apply { addView(col) })
             .setPositiveButton("Luk", null)
             .setOnDismissListener { if (tweaksChanged) web.reload() }
             .track()
@@ -1221,6 +1298,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { onSetupResult(m) }
         }
 
+        /** Ciceros indstilling for lys/mørk blev ændret */
+        @JavascriptInterface
+        fun theme(v: String) {
+            if (pageHost != CICERO_HOST) return
+            val t = v.take(30)
+            runOnUiThread { onCiceroThemeSetting(t) }
+        }
+
         @JavascriptInterface
         fun tweak(msg: String) {
             if (pageHost != CICERO_HOST) return
@@ -1264,7 +1349,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---------- Låner-tastaturet ----------
 
     private fun onKeysFieldFocused(mode: StaffKeys.Mode) {
-        if (Hub.locked || pinPad.isShowing || !prefs().getBoolean(PREF_TWEAKS, true)) return
+        if (Hub.locked || pinPad.isShowing || !tweakOn(TW_KEYS)) return
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(web.windowToken, 0)
         if (!staffKeys.isShowing || staffKeys.mode != mode) {
             LogBuf.add("Tastatur vist: " + when (mode) {
@@ -1419,17 +1504,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 // Én gang efter login: er Ciceros RFID-opsætning (Enhedsindstillinger) sat til NFClibra?
                 if (!scannerChecked && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
                     scannerChecked = true
-                    handler.postDelayed({ runScannerCheck(); web.evaluateJavascript(THEME_PROBE_JS, null) }, 4000)
+                    handler.postDelayed({ runScannerCheck() }, 4000)
                 }
                 injectPinWatcher()
-                if (prefs().getBoolean(PREF_TWEAKS, true)) {
-                    web.evaluateJavascript(SWIPE_TABS_JS, null)
-                    web.evaluateJavascript(PIN_TOGGLE_JS, null)
-                    web.evaluateJavascript(STICKY_BUTTONS_JS, null)
-                    web.evaluateJavascript(LANER_KEYS_JS, null)
-                    web.evaluateJavascript(TAGS_BUTTON_JS, null)
-                    pushPageColors()
-                }
+                // Lys/mørk følger Ciceros egen indstilling med det samme
+                web.evaluateJavascript(THEME_WATCH_JS, null)
+                // Hver tilpasning af Cicero for sig (Indstillinger)
+                if (tweakOn(TW_SWIPE)) web.evaluateJavascript(SWIPE_TABS_JS, null)
+                if (tweakOn(TW_PIN)) web.evaluateJavascript(PIN_TOGGLE_JS, null)
+                if (tweakOn(TW_PILL)) web.evaluateJavascript(STICKY_BUTTONS_JS, null)
+                if (tweakOn(TW_KEYS)) web.evaluateJavascript(LANER_KEYS_JS, null)
+                if (tweakOn(TW_TAGS)) web.evaluateJavascript(TAGS_BUTTON_JS, null)
+                pushPageColors()
                 handler.postDelayed({ detectCiceroTheme() }, 500)
             }
 
@@ -2215,22 +2301,31 @@ private val SCANNER_CHECK_JS = """
 })();
 """
 
-/**
- * Midlertidigt: hvor Cicero holder styr på lys/mørk – værdien af indstillingen DK-…_THEME og klassenavnene
- * på <html> og <body>. Ingen personlige data. Bruges til at gøre temaskift hurtigere.
- */
-private val THEME_PROBE_JS = """
+/** Ciceros indstilling for lys/mørk (DK-…_THEME), fx "LIGHT" eller "DARK" */
+private val THEME_READ_JS = """
 (function () {
-  if (location.hostname !== 'cicero.systematic.com') return;
-  var v = 'mangler';
   for (var i = 0; i < localStorage.length; i++) {
     var k = localStorage.key(i) || '';
-    if (/_THEME${'$'}/.test(k)) { v = String(localStorage.getItem(k)).slice(0, 30); break; }
+    if (/_THEME${'$'}/.test(k)) return String(localStorage.getItem(k)).slice(0, 30);
   }
-  function cls(el) { return el ? (el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || '').toString().slice(0, 120) : ''; }
-  try { CiceroNFC.tweak('Tema-spor: THEME=' + v + ' · html=' + cls(document.documentElement) + ' · body=' + cls(document.body)); } catch (x) {}
+  return null;
+})()
+"""
+
+/** Giver app'en besked i samme øjeblik, Cicero gemmer lys/mørk (Cicero gør det, når kontakten flyttes) */
+private val THEME_WATCH_JS = """
+(function () {
+  if (window.__cnfcTheme || location.hostname !== 'cicero.systematic.com') return;
+  window.__cnfcTheme = true;
+  var orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (k, v) {
+    var r = orig.apply(this, arguments);
+    try { if (this === localStorage && /_THEME${'$'}/.test(String(k))) CiceroNFC.theme(String(v)); } catch (x) {}
+    return r;
+  };
 })();
 """
+
 
 /** Feltet får fokus igen efter kameraet, så nummeret kan tastes ind */
 private val KEYS_REFOCUS_JS = """
