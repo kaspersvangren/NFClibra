@@ -2139,8 +2139,17 @@ private val TAGS_BUTTON_JS = """
       '<circle cx="12" cy="12" r="1.6" fill="#fff"/><path d="M15.5 8.5a5 5 0 0 1 0 7M8.5 8.5a5 5 0 0 0 0 7M18.4 5.6a9 9 0 0 1 0 12.8M5.6 5.6a9 9 0 0 0 0 12.8"/></svg>' +
       '<span>Tags</span>';
     b.style.cssText = 'position:absolute;z-index:2;display:flex;align-items:center;gap:6px;border:none;cursor:pointer;' +
-      'background:#0078D3;color:#fff;font:inherit;font-size:14px;font-weight:600;letter-spacing:.2px;' +
-      'padding:6px 14px 6px 11px;border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.3);transform:translate(-50%,-50%);';
+      'background:#0078D3;color:#fff;font:inherit;font-size:14px;font-weight:600;letter-spacing:.2px;box-sizing:border-box;' +
+      'height:36px;padding:0 14px 0 11px;border-radius:999px;box-shadow:0 1px 4px rgba(0,0,0,.3);' +
+      'transform:translate(-50%,-50%);transition:transform .1s, filter .1s;' +
+      '-webkit-tap-highlight-color:transparent;outline:none;';
+    // Ingen firkant ved tryk – i stedet bliver knappen lidt mørkere og trykkes en anelse sammen
+    function press(on) {
+      b.style.transform = 'translate(-50%,-50%)' + (on ? ' scale(.94)' : '');
+      b.style.filter = on ? 'brightness(.85)' : '';
+    }
+    b.addEventListener('pointerdown', function () { press(true); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { b.addEventListener(ev, function () { press(false); }); });
     b.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       try { CiceroNFC.openTool(); } catch (x) {}
@@ -2168,6 +2177,12 @@ private val TAGS_BUTTON_JS = """
       if (mine.contains(k) || c.contains(k)) continue;
       var r = k.getBoundingClientRect();
       if (r.width > 0 && r.right <= cr.left && r.right > left) left = r.right;
+    }
+    // Samme højde som cirklen med forbogstavet i navnet
+    var circles = c.querySelectorAll('*');
+    for (var j = 0; j < circles.length; j++) {
+      var q = circles[j].getBoundingClientRect();
+      if (q.width >= 24 && q.width <= 64 && Math.abs(q.width - q.height) <= 2) { mine.style.height = Math.round(q.height) + 'px'; break; }
     }
     mine.style.display = 'flex';
     var free = cr.left - left;
