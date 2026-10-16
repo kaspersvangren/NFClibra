@@ -240,6 +240,8 @@ object Hub {
     }
 
     private fun handleNewTag(tag: Tag) {
+        // Låst, siden tagget kom i kø (onLocked kan have kørt imellem): så skal det ikke ind bag låsen
+        if (locked) return
         current?.let { drop(it, "erstattet af nyt tag") }
         val phone = try {
             PhoneTag(tag)
@@ -287,9 +289,13 @@ object Hub {
         statusListener?.invoke()
     }
 
-    /** App'en er låst: slip bøgerne ved telefonen, så intet kan ændres på dem bag låsen. */
+    /** App'ens andre skærme (værktøj, kamera, guide) lukker sig, når der låses – de melder sig her. */
+    val onLockListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** App'en er låst: slip bøgerne ved telefonen, så intet kan ændres på dem bag låsen, og luk de andre skærme. */
     fun onLocked() {
         exec.execute { for (s in inventory.values.toList()) drop(s, "app'en blev låst") }
+        for (l in onLockListeners) try { l() } catch (_: Exception) {}
     }
 
     /**

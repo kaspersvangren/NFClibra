@@ -305,6 +305,9 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // Holder på NFC, mens kameraet er fremme – ellers melder Android "ingen understøttede apps", når bogen er tæt på
     override fun onTagDiscovered(tag: android.nfc.Tag?) {}
 
+    /** Låses der, mens kameraet er fremme, lukkes det med det samme */
+    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
+
     override fun onResume() {
         super.onResume()
         // Kommer man tilbage efter mere end 2 minutter, lukkes kameraet og værktøjet, så app'en låser
@@ -315,10 +318,12 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                     NfcAdapter.FLAG_READER_NFC_V or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
                 null)
         } catch (_: Exception) {}
+        Hub.onLockListeners.addIfAbsent(onLock)
     }
 
     override fun onPause() {
         super.onPause()
+        Hub.onLockListeners.remove(onLock)
         try { nfc?.disableReaderMode(this) } catch (_: Exception) {}
     }
 

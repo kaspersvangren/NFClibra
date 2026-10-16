@@ -89,13 +89,15 @@ App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Hver tilpasning
 - Den lokale server svarer kun forespørgsler fra Cicero Mobile
   (`https://cicero.systematic.com`) rettet til localhost – og kun dem, som Cicero inde i NFClibra
   faktisk har sendt (app'en ser hver forespørgsel først og udsteder en billet til netop den – metode,
-  sti og parametre). Andre apps på telefonen kan derfor ikke styre RFID-læseren.
+  sti og parametre). Andre apps på telefonen kan derfor ikke styre RFID-læseren på egen hånd.
 - Kameraet (scanning af lånerkort) gives kun til Ciceros egen side, og pinkoden sendes kun dertil.
 - Andre hjemmesider end Cicero og login åbnes i telefonens browser, ikke i app'en – også ved
   omdirigeringer. Indlejrede rammer fra andre sider blokeres.
 - Ukrypteret forbindelse er kun tilladt til app'ens egen server på telefonen.
 - Værktøjets kamera genkender tal og stregkoder på selve telefonen (Googles ML Kit via Play-tjenester).
   Billeder gemmes ikke og sendes ikke; Play-tjenester kan sende anonym brugsstatistik om genkendelsen til Google.
+- Webvisningens "Safe Browsing" (som sender adresser til Google) er slået fra; app'en viser kun Cicero og login.
+- Miniaturen i "seneste apps" viser ikke Cicero.
 - Links, der åbner et nyt vindue, åbnes i telefonens browser.
 
 ## Protokol
@@ -107,11 +109,11 @@ App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Hver tilpasning
 | `/scan` | returnerer bogen ved telefonen |
 | `/start`, `/stop` | Cicero begynder/holder op med at lytte |
 | `/alarmOn`, `/alarmOff` | sætter AFI til 0x07 (sikret) / 0xC2 (udlånt) |
-| `/write?barcode=` | programmerer tagget efter den danske RFID-datamodel |
+| `/write?barcode=` | programmerer tagget efter den danske RFID-datamodel (altid som del 1 af 1 – der ligger højst én bog ved telefonen; sæt programmeres i Værktøj til tags) |
 | `/writetagbarcode?tagid=&barcode=` | programmerer et bestemt tag (ud fra tag-id) |
 
-Protokollen er genskabt ud fra go-feig (MIT-licens, Deichman bibliotek, Oslo).
-Der er ikke kopieret kode fra go-feig.
+Protokollen er genskabt ud fra go-feigs dokumentation og adfærd (MIT-licens, Deichman bibliotek, Oslo).
+Der er ikke kopieret kode fra go-feig. Alarm-værdierne (AFI 0x07/0xC2) følger samme praksis som go-feig og ISO 28560.
 
 ## Ændringer
 

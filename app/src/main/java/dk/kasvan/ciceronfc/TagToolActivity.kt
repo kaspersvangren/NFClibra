@@ -789,6 +789,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             askingMac = i.mac
             val what = if (c != null && i.danish && c.barcode.isNotEmpty()) "materialenummer ${c.barcode}" else "andet indhold"
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 AlertDialog.Builder(this)
                     .setTitle("Overskriv?")
                     .setMessage("Chippen har allerede $what. Vil du overskrive den med ${p.barcode}?")
@@ -902,6 +903,9 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /** Låses der, mens værktøjet er fremme (fx fra hovedskærmen i baggrunden), lukkes det med det samme */
+    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
+
     override fun onResume() {
         super.onResume()
         // Kommer man tilbage efter mere end 2 minutter, må værktøjet ikke stå åbent uden oplåsning
@@ -914,10 +918,12 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         )
         handler.removeCallbacks(idleCheck)
         handler.postDelayed(idleCheck, 10_000)
+        Hub.onLockListeners.addIfAbsent(onLock)
     }
 
     override fun onPause() {
         super.onPause()
+        Hub.onLockListeners.remove(onLock)
         nfc?.disableReaderMode(this)
         handler.removeCallbacks(idleCheck)
     }

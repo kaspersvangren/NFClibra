@@ -174,8 +174,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             "light" -> lightPalette
             else -> if (night) darkPalette else lightPalette
         }
-        // Miniaturen i "seneste apps" viser ikke Cicero (almindelige skærmbilleder virker stadig)
+        // Miniaturen i "seneste apps" viser ikke Cicero. På Android 13+ kan det slås fra alene (almindelige
+        // skærmbilleder virker stadig); på ældre Android må hele vinduet gøres sikkert, så miniaturen bliver sort.
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
+        else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         buildLayout()
         setupWeb(savedInstanceState)
         LogBuf.listener = { runOnUiThread { refreshLog() } }
@@ -400,7 +402,17 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             isClickable = true // tryk må ikke gå igennem til Cicero
             visibility = View.GONE
             setOnClickListener {
-                if (Hub.locked) authenticate() else {
+                if (Hub.locked) {
+                    // Når trykket når hertil, står telefonens oplåsning ikke længere ovenpå. Står der alligevel
+                    // "oplåsning i gang" (et svar, der aldrig kom), må den startes forfra i stedet for at hænge
+                    if (authInProgress) {
+                        LogBuf.add("Oplåsning hang – starter forfra")
+                        authCancel?.cancel()
+                        authEnded()
+                        // Et evt. sent "afbrudt"-svar skal nå at lande, før den nye oplåsning starter
+                        handler.postDelayed({ if (Hub.locked && resumed) authenticate() }, 300)
+                    } else authenticate()
+                } else {
                     // Låst op, men låseskærmen står der stadig: et tryk fjerner den
                     LogBuf.add("Låseskærm fjernet ved tryk")
                     lockView.animate().cancel()
@@ -634,7 +646,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // ---------- Guide ----------
 
     private fun openGuide() {
-        openingOwnScreen = true
+        openingOwn()
         startActivity(Intent(this, GuideActivity::class.java).putExtra(GuideActivity.EXTRA_DARK, pal === darkPalette))
     }
 
@@ -1434,7 +1446,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 StaffKeys.Mode.LAANER -> sendChar('C')
                 StaffKeys.Mode.PHONE -> sendKey(KeyEvent.KEYCODE_PLUS)
                 StaffKeys.Mode.ITEM -> {
-                    openingOwnScreen = true
+                    openingOwn()
                     @Suppress("DEPRECATION")
                     startActivityForResult(
                         Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
@@ -1495,6 +1507,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             displayZoomControls = false
             // Samme tekststørrelse som i Chrome (ellers følger den telefonens skriftstørrelse, og Ciceros layout skrider)
             textZoom = 100
+            // Siderne får ingen adgang til telefonens filer eller andre apps' indhold (sat udtrykkeligt,
+            // selv om det meste allerede er standard)
+            allowFileAccess = false
+            allowContentAccess = false
+            // Browserens "Safe Browsing" sender adresser (hashede) til Google; app'en viser kun Cicero, så det er
+            // overflødigt – og så går der ikke flere data ud af telefonen end nødvendigt
+            safeBrowsingEnabled = false
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
@@ -1506,7 +1525,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme?.lowercase() ?: return true
                 val h = request.url.host?.lowercase() ?: ""
-                if ((scheme == "https" || scheme == "http") && isTrustedHost(h)) return false
+                // Kun krypteret til de betroede sider; en ukrypteret adresse til dem afvises bare
+                if (scheme == "https" && isTrustedHost(h)) return false
+                if (scheme == "http" && isTrustedHost(h)) { LogBuf.add("Blokeret ukrypteret adresse til $h"); return true }
                 if (!request.isForMainFrame) {
                     LogBuf.add("Blokeret ramme fra fremmed side: $h")
                     return true
@@ -1583,7 +1604,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 // Kun beskeder om RFID-forbindelsen – andre fejlbeskeder fra Cicero kan indeholde lånerdata
                 val important = msg.contains("localhost") || msg.contains(":${Server.PORT}") ||
                     msg.contains("rfid", ignoreCase = true)
-                if (important) LogBuf.add("Cicero-konsol: ${scrub(msg)}")
+                // Højst 120 tegn: det er nok til at se forbindelsesfejlen, og lange beskeder kunne rumme andet
+                if (important) LogBuf.add("Cicero-konsol: ${scrub(msg).take(120)}")
                 return true
             }
 
@@ -1601,7 +1623,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 } else {
                     pendingCamera?.deny()
                     pendingCamera = request
-                    openingOwnScreen = true // telefonens tilladelsesvindue må ikke tælle som "uden fokus"
+                    openingOwn() // telefonens tilladelsesvindue må ikke tælle som "uden fokus"
                     requestPermissions(arrayOf(Manifest.permission.CAMERA), cameraRequestCode)
                 }
             }
@@ -1643,7 +1665,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
 
         web.addJavascriptInterface(PinBridge(), "CiceroNFC")
-        if (saved != null) web.restoreState(saved) else web.loadUrl(START_URL)
+        // Kan den gemte tilstand ikke genskabes (fx efter en opdatering af webvisningen), startes forfra
+        if (saved == null || web.restoreState(saved) == null) web.loadUrl(START_URL)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -1667,6 +1690,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     /** En af app'ens egne skærme (værktøj, guide, kamera) er ved at åbne – det er ikke "uden fokus" */
     private var openingOwnScreen = false
 
+    /** Sæt flaget, men kun kort: åbner skærmen aldrig (ingen onPause), må flaget ikke blive hængende */
+    private fun openingOwn() {
+        openingOwnScreen = true
+        handler.postDelayed({ if (resumed) openingOwnScreen = false }, 3000)
+    }
+
     override fun onStop() {
         super.onStop()
         // Helt væk (baggrund → Hub låser) eller en af vores egne skærme ovenpå: ikke fokus-låsen
@@ -1676,9 +1705,21 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     /** Lås, hvis app'en stadig er uden fokus lidt efter onPause (ikke bare et kort systemvindue) */
     private val pauseLock = Runnable {
-        if (!resumed && !authInProgress && !Hub.locked && isDeviceSecure()) {
+        if ((!resumed || !isTop) && !authInProgress && !Hub.locked && isDeviceSecure()) {
             LogBuf.add("App'en uden fokus – låser")
             lock()
+        }
+    }
+
+    /** Android 10+: i delt skærm er begge apps "resumed", og et fokusskift meldes kun her */
+    private var isTop = true
+
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        isTop = isTopResumedActivity
+        handler.removeCallbacks(pauseLock)
+        if (!isTop && resumed && !authInProgress && !openingOwnScreen && !isChangingConfigurations && isDeviceSecure() && !Hub.locked) {
+            handler.postDelayed(pauseLock, 1500)
         }
     }
 
@@ -1722,6 +1763,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         resumed = false
         // Mister fokus, men er stadig synlig (fx delt skærm med en anden app i fokus): lås, så tiden ikke
         // bare står stille. Ikke mens telefonens egen oplåsning er fremme, og ikke ved skærmdrejning.
+        handler.removeCallbacks(pauseLock)
         if (!authInProgress && !openingOwnScreen && !isChangingConfigurations && isDeviceSecure() && !Hub.locked) {
             handler.postDelayed(pauseLock, 1500)
         }
@@ -1938,7 +1980,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     private fun openTagTool() {
-        openingOwnScreen = true
+        openingOwn()
         startActivity(Intent(this, TagToolActivity::class.java).putExtra(TagToolActivity.EXTRA_DARK, pal === darkPalette))
     }
 
@@ -2366,8 +2408,21 @@ private val TAGS_BUTTON_JS = """
     mine.style.left = Math.round((left + cr.left) / 2 - hr.left) + 'px';
     mine.style.top = Math.round(cr.top + cr.height / 2 - hr.top) + 'px';
   }
+  // Kører når siden ændrer sig (højst hvert 150 ms, ikke mens fanen er skjult) plus et langsomt ur
+  var timer = null;
+  function kick() {
+    if (timer || document.hidden) return;
+    timer = setTimeout(function () { timer = null; sync(); }, 150);
+  }
   sync();
-  setInterval(sync, 700);
+  new MutationObserver(function (ms) {
+    for (var i = 0; i < ms.length; i++) {
+      var t = ms[i].target;
+      if (!(t.closest && t.closest('[data-cnfc="tags"]'))) { kick(); return; }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  addEventListener('resize', kick);
+  setInterval(function () { if (!document.hidden) sync(); }, 2000);
   addEventListener('resize', sync);
 })();
 """
@@ -2569,12 +2624,14 @@ private val STICKY_BUTTONS_JS = """
     c.removeAttribute('id');
     [].forEach.call(c.querySelectorAll('[id]'), function (x) { x.removeAttribute('id'); });
     c.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0;padding:0;width:auto;height:auto;';
-    var ob = st.row.querySelectorAll('button'), cb = c.querySelectorAll('button');
+    var cb = c.querySelectorAll('button');
     [].forEach.call(cb, function (x, i) {
       x.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
-        var o = ob[i];
-        if (o && !o.disabled) o.click();
+        // Knappen slås op i trykøjeblikket: Cicero kan have gentegnet rækken siden kopien blev lavet
+        var o = st.row.querySelectorAll('button')[i];
+        if (o && o.isConnected && !o.disabled) o.click();
+        else if (!o || !o.isConnected) { st.target.style.display = ''; st.pill.remove(); bar = null; kick(); }
       }, true);
     });
     st.pill.innerHTML = '';
@@ -2618,11 +2675,23 @@ private val STICKY_BUTTONS_JS = """
     var base = navTop(bar.pill) - 8;
     var free = clearBelow(bar.pill, base);
     var bottomY = free < base ? free - 8 : base;
-    bar.pill.style.bottom = Math.round(innerHeight - bottomY) + 'px';
+    var px = Math.round(innerHeight - bottomY) + 'px';
+    if (bar.pill.style.bottom !== px) bar.pill.style.bottom = px;
+  }
+  // Kører når siden ændrer sig (ikke på et fast ur): højst hvert 150 ms, aldrig mens fanen er skjult.
+  // Egne ændringer i pillen tæller ikke. Et langsomt ur fanger det, der flytter sig uden at ændre siden.
+  var timer = null;
+  function kick() {
+    if (timer || document.hidden) return;
+    timer = setTimeout(function () { timer = null; sync(); }, 150);
   }
   sync();
-  setInterval(sync, 400);
-  addEventListener('resize', sync);
+  new MutationObserver(function (ms) {
+    for (var i = 0; i < ms.length; i++) if (!bar || !bar.pill.contains(ms[i].target)) { kick(); return; }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'disabled', 'hidden'] });
+  addEventListener('resize', kick);
+  addEventListener('scroll', kick, true);
+  setInterval(function () { if (!document.hidden) sync(); }, 2000);
 })();
 """
 
@@ -2872,6 +2941,20 @@ private val PIN_TOGGLE_JS = """
     mine.style.opacity = busy ? '0.5' : '';
     place(host, mine);
   }
-  setInterval(function () { if (location.hostname === 'cicero.systematic.com') sync(); }, 800);
+  // Kører når siden ændrer sig (højst hvert 150 ms, ikke mens fanen er skjult) plus et langsomt ur
+  var timer = null;
+  function kick() {
+    if (timer || document.hidden || location.hostname !== 'cicero.systematic.com') return;
+    timer = setTimeout(function () { timer = null; sync(); }, 150);
+  }
+  new MutationObserver(function (ms) {
+    for (var i = 0; i < ms.length; i++) {
+      var t = ms[i].target;
+      if (!(t.closest && t.closest('[data-cnfc="pin"]'))) { kick(); return; }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  addEventListener('resize', kick);
+  kick();
+  setInterval(function () { if (!document.hidden && location.hostname === 'cicero.systematic.com') sync(); }, 2000);
 })();
 """

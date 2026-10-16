@@ -843,8 +843,17 @@ class GuideActivity : ComponentActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    /** Låses der, mens guiden er fremme, lukkes den med det samme */
+    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
+
     override fun onResume() {
         super.onResume()
-        if (Hub.locked || Hub.idleTooLong()) finish()
+        if (Hub.locked || Hub.idleTooLong()) { finish(); return }
+        Hub.onLockListeners.addIfAbsent(onLock)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Hub.onLockListeners.remove(onLock)
     }
 }

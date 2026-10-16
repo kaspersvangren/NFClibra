@@ -105,9 +105,9 @@ object Server {
                         }
                     }
                 } catch (e: Exception) {
-                    LogBuf.add("Server på $addr: ${e.message}")
-                    // IPv4 er den, Cicero bruger; IPv6 findes ikke på alle telefoner
+                    // IPv4 er den, Cicero bruger; IPv6 findes ikke på alle telefoner, så den fejl er ikke en fejl
                     if (addr == "127.0.0.1") {
+                        LogBuf.add("Server på $addr: ${e.message}")
                         bindError = "Port $PORT er optaget"
                         Hub.statusListener?.invoke()
                     }
@@ -200,11 +200,9 @@ object Server {
                 return
             }
 
-            when (req.path) {
-                "/events", "/events/" -> {
-                    serveEvents(sock, inp, out, origin)
-                    return
-                }
+            if (req.path == "/events") {
+                serveEvents(sock, inp, out, origin)
+                return
             }
 
             val r = route(req)
@@ -220,7 +218,8 @@ object Server {
             respond(out, r.code, if (r.json) "application/json" else "text/plain; charset=utf-8", r.body, origin)
             sock.close()
         } catch (e: Exception) {
-            LogBuf.add("HTTP-fejl: ${e.message}")
+            // URLDecoder gentager afsenderens tekst i sin fejl – den skal ikke i loggen
+            LogBuf.add("HTTP-fejl: ${if (e is IllegalArgumentException) "ugyldig forespørgsel" else e.message}")
             try { sock.close() } catch (_: Exception) {}
         }
     }
@@ -348,7 +347,9 @@ object Server {
 
         val target = parts[1]
         val q = target.indexOf('?')
-        val path = if (q >= 0) target.substring(0, q) else target
+        // Stien normaliseres som i billetten (afkodet, uden slut-skråstreg), så en forespørgsel aldrig kan
+        // matche en billet og alligevel ende et andet sted i route()
+        val path = android.net.Uri.decode(if (q >= 0) target.substring(0, q) else target).trimEnd('/').ifEmpty { "/" }
         val query = HashMap<String, String>()
         if (q >= 0) {
             for (pair in target.substring(q + 1).split('&')) {
