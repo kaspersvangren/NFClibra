@@ -10,7 +10,8 @@ samme protokol som Deichmans open source RFID-program
 [go-feig](https://github.com/digibib/go-feig), som Cicero understøtter under
 RFID-scanneren **Deichman**.
 
-Designet og testet af Kasper Svangren, Gladsaxe Bibliotekerne. Kodet med AI-assistance (Claude).
+Udviklet privat af Kasper Svangren, der arbejder som bibliotekar og Cicero-systemadministrator i Gladsaxe.
+Gladsaxe Kommune står ikke bag app'en. Kodet med AI-assistance (Claude).
 
 ## Hent
 
