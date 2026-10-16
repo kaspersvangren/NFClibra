@@ -172,10 +172,15 @@ object Hub {
         if (started) return
         started = true
         ctx = context.applicationContext
+        configuredLibrary = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE).getString(PREF_LIBRARY, null)
         CrashLog.install(ctx)
         Server.start()
         exec.scheduleWithFixedDelay({ presenceCheck() }, 300, 300, TimeUnit.MILLISECONDS)
     }
+
+    /** Vibrationsmønstre, som værktøjet også bruger: to korte = godt, tre hurtige = fejl */
+    val VIB_DOUBLE = longArrayOf(0, 110, 80, 110)
+    val VIB_ERROR = longArrayOf(0, 80, 70, 80, 70, 80)
 
     private fun signal(fb: Fb, text: String, detail: String = "") {
         feedback = fb
@@ -187,7 +192,7 @@ object Hub {
             Fb.READ -> vibrate(longArrayOf(0, 70), intArrayOf(0, 255))
             // Alarm fra: "ka-pling" op (A4 → E5) + dobbelt-vibration
             Fb.ALARM_OFF -> {
-                vibrate(longArrayOf(0, 110, 80, 110))
+                vibrate(VIB_DOUBLE)
                 Beeper.chime(Beeper.Note(0, 440.0, 380), Beeper.Note(110, 659.3, 650))
             }
             // Alarm til: samme "ka-pling", bare ned (E5 → A4) + én lang vibration
@@ -196,11 +201,11 @@ object Hub {
                 Beeper.chime(Beeper.Note(0, 659.3, 380), Beeper.Note(110, 440.0, 650))
             }
             Fb.WRITTEN -> {
-                vibrate(longArrayOf(0, 110, 80, 110))
+                vibrate(VIB_DOUBLE)
                 Beeper.play(660 to 90, 0 to 40, 660 to 90)
             }
             Fb.ERROR -> {
-                vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
+                vibrate(VIB_ERROR)
                 Beeper.play(220 to 550)
             }
             Fb.IDLE, Fb.SEEN -> {}
@@ -232,7 +237,7 @@ object Hub {
         // Låst: ellers kunne man fx aflevere bøger uden at låse op
         if (locked) {
             LogBuf.add("Bog ignoreret – app'en er låst")
-            vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
+            vibrate(VIB_ERROR)
             return
         }
         lastActivity = SystemClock.elapsedRealtime()

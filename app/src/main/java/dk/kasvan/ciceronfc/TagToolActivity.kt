@@ -18,12 +18,10 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.InputType
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -33,7 +31,7 @@ import java.util.concurrent.TimeUnit
  * ("konvertér"). Mens værktøjet er åbent, får Cicero ikke besked om tags – intet kan lånes ud eller afleveres ved et uheld.
  * App'en sender aldrig lås-kommandoer til et tag (de kan ikke fortrydes).
  */
-class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
+class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     companion object {
         const val EXTRA_DARK = "dark"
         private const val FORGET_AFTER_MS = 10_000L // kortet forsvinder 10 sek. efter chippen er fjernet
@@ -116,14 +114,12 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun prefs() = getSharedPreferences("ui", MODE_PRIVATE)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         dark = intent.getBooleanExtra(EXTRA_DARK, true)
         tc = ToolColors(dark)
-        Hub.configuredLibrary = prefs().getString(Hub.PREF_LIBRARY, null)
         nfc = NfcAdapter.getDefaultAdapter(this)
         buildUi()
         showInfo()
@@ -689,12 +685,12 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                 showInfo()
                 say(msg, green)
                 flash(true)
-                vibrate(longArrayOf(0, 110, 80, 110))
+                vibrate(Hub.VIB_DOUBLE)
             } catch (e: Exception) {
                 LogBuf.add("Værktøj: $what fejlede: ${e.message}")
                 say("$what fejlede – prøv igen", red)
                 flash(false)
-                vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
+                vibrate(Hub.VIB_ERROR)
             }
         }
     }
@@ -812,7 +808,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             info = readInfo(t)
             showInfo()
             LogBuf.add("Værktøj: programmeret ${p.barcode} del ${p.part}/${p.total}")
-            vibrate(longArrayOf(0, 110, 80, 110))
+            vibrate(Hub.VIB_DOUBLE)
             flash(true)
             if (!p.single && p.part < p.total) {
                 p.part++
@@ -836,7 +832,7 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             LogBuf.add("Værktøj: programmering fejlede: ${e.message}")
             say("Skrivning fejlede – løft chippen og prøv igen", red)
             flash(false)
-            vibrate(longArrayOf(0, 80, 70, 80, 70, 80))
+            vibrate(Hub.VIB_ERROR)
         }
     }
 
@@ -885,16 +881,6 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // Samme vibration som resten af app'en (kommer også igennem i lydløs)
     private fun vibrate(pattern: LongArray) = Hub.vibrate(pattern)
 
-    /**
-     * Ethvert tryk tæller som brug, så app'en ikke låser midt i arbejdet. Er app'en låst eller
-     * har den ikke været brugt i 2 minutter, lukkes værktøjet i stedet, og hovedskærmen låser.
-     */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
-        Hub.lastActivity = SystemClock.elapsedRealtime()
-        return super.dispatchTouchEvent(ev)
-    }
-
     private val idleCheck = object : Runnable {
         override fun run() {
             // 2 minutter uden brug: luk værktøjet, så app'en låser som normalt
@@ -903,13 +889,9 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    /** Låses der, mens værktøjet er fremme (fx fra hovedskærmen i baggrunden), lukkes det med det samme */
-    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
-
     override fun onResume() {
         super.onResume()
-        // Kommer man tilbage efter mere end 2 minutter, må værktøjet ikke stå åbent uden oplåsning
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return }
+        if (isFinishing) return
         val opts = Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500) }
         nfc?.enableReaderMode(
             this, this,
@@ -918,12 +900,10 @@ class TagToolActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         )
         handler.removeCallbacks(idleCheck)
         handler.postDelayed(idleCheck, 10_000)
-        Hub.onLockListeners.addIfAbsent(onLock)
     }
 
     override fun onPause() {
         super.onPause()
-        Hub.onLockListeners.remove(onLock)
         nfc?.disableReaderMode(this)
         handler.removeCallbacks(idleCheck)
     }

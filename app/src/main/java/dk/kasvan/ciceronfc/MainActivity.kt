@@ -164,7 +164,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Hub.start(applicationContext)
-        Hub.configuredLibrary = getSharedPreferences("ui", MODE_PRIVATE).getString(Hub.PREF_LIBRARY, null)
         Beeper.enabled = getSharedPreferences("ui", MODE_PRIVATE).getBoolean(PREF_SOUND, true)
         nfc = NfcAdapter.getDefaultAdapter(this)
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -767,6 +766,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /** Kører et script i Cicero med de fælles hjælpefunktioner (HELPERS_JS) lagt ind først */
+    private fun runJs(src: String, cb: ((String) -> Unit)? = null) {
+        if (!::web.isInitialized) return
+        web.evaluateJavascript(HELPERS_JS + "\n" + src, cb)
+    }
+
     /** Giver app'ens tilpasninger (fx den svævende knaprække) Ciceros kortfarve i lys/mørk */
     private fun pushPageColors() {
         if (!::web.isInitialized) return
@@ -853,7 +858,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun detectCiceroTheme() {
         // Først Ciceros egen indstilling; kun hvis den ikke findes, måles farverne på skærmen
-        web.evaluateJavascript(THEME_READ_JS) { r ->
+        runJs(THEME_READ_JS) { r ->
             if (themeFromSetting(r) != null) onCiceroThemeSetting(r) else measureCiceroTheme()
         }
     }
@@ -1163,7 +1168,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun runScannerCheck() {
         if (Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
-        web.evaluateJavascript(SCANNER_CHECK_JS.replace("%PORT%", Server.PORT.toString()), null)
+        runJs(SCANNER_CHECK_JS.replace("%PORT%", Server.PORT.toString()), null)
     }
 
     /** Svar fra tjekket: "mangler" eller "localhost=ja|nej,port=ja|nej" (aldrig selve indstillingen) */
@@ -1215,7 +1220,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             return
         }
         LogBuf.add("Opsætning af Cicero startet")
-        web.evaluateJavascript(RFID_SETUP_JS.replace("%PORT%", Server.PORT.toString()), null)
+        runJs(RFID_SETUP_JS.replace("%PORT%", Server.PORT.toString()), null)
     }
 
     private fun onSetupResult(msg: String) {
@@ -1360,7 +1365,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     /** Holder øje med, om Ciceros pinkode-felt vælges. Slået fra = Cicero opfører sig som før. */
     private fun injectPinWatcher() {
         val on = prefs().getBoolean(PREF_PIN_PAD, true)
-        web.evaluateJavascript(PIN_WATCHER_JS.replace("%ON%", on.toString()), null)
+        runJs(PIN_WATCHER_JS.replace("%ON%", on.toString()), null)
     }
 
     private fun onPinFieldFocused() {
@@ -1385,7 +1390,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             LogBuf.add("Pinkode ikke udfyldt – siden var skiftet")
             return
         }
-        web.evaluateJavascript(PIN_FILL_JS.replace("%PIN%", pin)) { r ->
+        runJs(PIN_FILL_JS.replace("%PIN%", pin)) { r ->
             LogBuf.add(if (r?.contains("ok") == true) "Pinkode udfyldt" else "Pinkode-feltet var forsvundet")
         }
     }
@@ -1410,7 +1415,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         // Kun tal og bogstaver – intet andet sendes ind på siden
         if (!Regex("^[0-9A-Za-z]{1,40}$").matches(v)) return
         if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
-        web.evaluateJavascript(KEYS_REFOCUS_JS) {
+        runJs(KEYS_REFOCUS_JS) {
             handler.postDelayed({
                 if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return@postDelayed
                 v.forEach { sendChar(it) }
@@ -1430,7 +1435,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     private fun hideStaffKeys() {
         staffKeys.hide()
-        web.evaluateJavascript(LANER_BLUR_JS, null)
+        runJs(LANER_BLUR_JS, null)
     }
 
     private fun onStaffKey(k: StaffKeys.Key) {
@@ -1460,7 +1465,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             StaffKeys.Key.Abc -> {
                 // Telefonens eget tastatur til feltet, indtil man forlader det
                 staffKeys.hide()
-                web.evaluateJavascript(LANER_ABC_JS, null)
+                runJs(LANER_ABC_JS, null)
                 handler.postDelayed({
                     web.requestFocus()
                     getSystemService(InputMethodManager::class.java)?.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT)
@@ -1478,7 +1483,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     /** "Tastatur": brug telefonens almindelige tastatur til feltet denne gang */
     private fun useNormalKeyboardForPin() {
-        web.evaluateJavascript(PIN_KEYBOARD_JS, null)
+        runJs(PIN_KEYBOARD_JS, null)
         handler.postDelayed({
             web.requestFocus()
             getSystemService(InputMethodManager::class.java)?.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT)
@@ -1573,13 +1578,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 }
                 injectPinWatcher()
                 // Lys/mørk følger Ciceros egen indstilling med det samme
-                web.evaluateJavascript(THEME_WATCH_JS, null)
+                runJs(THEME_WATCH_JS, null)
                 // Hver tilpasning af Cicero for sig (Indstillinger)
-                if (tweakOn(TW_SWIPE)) web.evaluateJavascript(SWIPE_TABS_JS, null)
-                if (tweakOn(TW_PIN)) web.evaluateJavascript(PIN_TOGGLE_JS, null)
-                if (tweakOn(TW_PILL)) web.evaluateJavascript(STICKY_BUTTONS_JS, null)
-                if (tweakOn(TW_KEYS)) web.evaluateJavascript(LANER_KEYS_JS, null)
-                if (tweakOn(TW_TAGS)) web.evaluateJavascript(TAGS_BUTTON_JS, null)
+                if (tweakOn(TW_SWIPE)) runJs(SWIPE_TABS_JS, null)
+                if (tweakOn(TW_PIN)) runJs(PIN_TOGGLE_JS, null)
+                if (tweakOn(TW_PILL)) runJs(STICKY_BUTTONS_JS, null)
+                if (tweakOn(TW_KEYS)) runJs(LANER_KEYS_JS, null)
+                if (tweakOn(TW_TAGS)) runJs(TAGS_BUTTON_JS, null)
                 pushPageColors()
                 handler.postDelayed({ detectCiceroTheme() }, 500)
             }
@@ -2036,13 +2041,107 @@ private val RFID_PATHS = setOf(
     "/alarmOn", "/alarmOff", "/write", "/writetagbarcode",
 )
 
+/**
+ * Fælles hjælpefunktioner til alle scripts, der lægges ind i Cicero (window.__cnfc). Lægges ind før hvert
+ * script, så de altid findes – også når et script køres senere (fx "Sæt Cicero op"). Kører kun én gang pr. side.
+ */
+private val HELPERS_JS = """
+(function () {
+  if (window.__cnfc) return;
+  var H = window.__cnfc = {};
+  H.cicero = function () { return location.hostname === 'cicero.systematic.com'; };
+  /** Synlig tekst, med al mellemrum/linjeskift samlet til ét mellemrum */
+  H.textOf = function (el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); };
+  H.visible = function (el) { return !!(el && el.offsetParent !== null); };
+  H.sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  /** Venter (højst ms) på, at fn() giver noget sandt; ellers null */
+  H.waitFor = function (fn, ms) {
+    return new Promise(function (res) {
+      var t0 = Date.now();
+      (function poll() {
+        var v = null;
+        try { v = fn(); } catch (e) {}
+        if (v) return res(v);
+        if (Date.now() - t0 > ms) return res(null);
+        setTimeout(poll, 100);
+      })();
+    });
+  };
+  /** Ciceros kontakter (mat-slide-toggle): den, der rummer teksten – evt. kun efter et bestemt element */
+  H.findToggle = function (label, afterEl) {
+    var list = document.querySelectorAll('mat-slide-toggle, .mat-mdc-slide-toggle');
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      if (t.hasAttribute('data-cnfc')) continue;
+      if (afterEl && !(afterEl.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+      if (H.textOf(t).indexOf(label) >= 0) return t;
+    }
+    return null;
+  };
+  H.switchOf = function (t) { return t.querySelector('button[role=switch], input[type=checkbox]') || t; };
+  H.isOn = function (t) {
+    var b = H.switchOf(t);
+    if (b.getAttribute && b.getAttribute('aria-checked') != null) return b.getAttribute('aria-checked') === 'true';
+    if (b.type === 'checkbox') return b.checked;
+    return t.classList.contains('mat-mdc-slide-toggle-checked') || t.classList.contains('mat-checked');
+  };
+  /** Sætter værdien, så Cicero (Angular) opdager den, som var den tastet */
+  H.setValue = function (input, v, focusFirst) {
+    var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    if (focusFirst) input.focus();
+    set.call(input, v);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  };
+  /** Synlig, aktiv knap med præcis den tekst */
+  H.button = function (name) {
+    var bs = document.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) if (H.textOf(bs[i]) === name && H.visible(bs[i]) && !bs[i].disabled) return bs[i];
+    return null;
+  };
+  /** Chippen med brugernavnet øverst i Ciceros bjælke (et tryk åbner Enhedsindstillinger) */
+  H.userChip = function () {
+    var user = sessionStorage.getItem('username') || '';
+    if (!user) return null;
+    var list = document.querySelectorAll('button, [role=button], a');
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i], t = H.textOf(b);
+      if (t.indexOf(user) >= 0 && t.length < 80 && H.visible(b) && !b.closest('.cdk-overlay-container')) return b;
+    }
+    return null;
+  };
+  /** Kører fn, når siden ændrer sig – højst hvert 150 ms, ikke mens fanen er skjult, og aldrig for egne
+      elementer (ownSelector). Et langsomt ur fanger det, der flytter sig uden at ændre siden. */
+  H.onChange = function (fn, ownSelector, extraEvents) {
+    var timer = null;
+    function kick() {
+      if (timer || document.hidden) return;
+      timer = setTimeout(function () { timer = null; fn(); }, 150);
+    }
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) {
+        var t = ms[i].target;
+        if (!(ownSelector && t.closest && t.closest(ownSelector))) { kick(); return; }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'disabled', 'hidden'] });
+    addEventListener('resize', kick);
+    (extraEvents || []).forEach(function (ev) { addEventListener(ev, kick, true); });
+    setInterval(function () { if (!document.hidden) fn(); }, 2000);
+    return kick;
+  };
+})();
+"""
+
 /** Lægges ind i Cicero: opdager når feltet "Pinkode" vælges og beder app'en vise sit store tastatur */
 private val PIN_WATCHER_JS = """
 (function () {
   window.__cnfcPinOn = %ON%;
   if (window.__cnfcPinInstalled) return;
   window.__cnfcPinInstalled = true;
-  function textOf(el) {
+  // Alt, der kan beskrive et felt: aria-label, placeholder, navn, labels (ikke det samme som H.textOf)
+  function fieldText(el) {
     var t = [el.getAttribute('aria-label'), el.getAttribute('placeholder'), el.getAttribute('name'),
              el.id, el.getAttribute('formcontrolname')].join(' ');
     if (el.labels) for (var i = 0; i < el.labels.length; i++) t += ' ' + el.labels[i].textContent;
@@ -2055,10 +2154,10 @@ private val PIN_WATCHER_JS = """
   document.addEventListener('focusin', function (e) {
     var el = e.target;
     if (!window.__cnfcPinOn || !el || el.tagName !== 'INPUT') return;
-    if (location.hostname !== 'cicero.systematic.com') return;
+    if (!window.__cnfc.cicero()) return;
     if (el.getAttribute('data-cnfc-skip') === '1') return;
     if (el.type === 'checkbox' || el.type === 'radio' || (el.closest && el.closest('[data-cnfc]'))) return;
-    if (!/pin.?kode|pincode/.test(textOf(el))) return;
+    if (!/pin.?kode|pincode/.test(fieldText(el))) return;
     window.__cnfcPinEl = el;
     el.blur();
     try { CiceroNFC.pinFocus(); } catch (x) {}
@@ -2071,12 +2170,7 @@ private val PIN_FILL_JS = """
 (function (v) {
   var el = window.__cnfcPinEl;
   if (!el || !document.contains(el)) return 'none';
-  var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-  set.call(el, v);
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-  el.dispatchEvent(new FocusEvent('blur'));
-  el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  window.__cnfc.setValue(el, v, false);
   return 'ok';
 })('%PIN%')
 """
@@ -2113,7 +2207,7 @@ private val LANER_KEYS_JS = """
   }
   function usable(el) {
     return el && el.tagName === 'INPUT' && !/^(checkbox|radio|hidden|email|password|date|file|button|submit)$/.test(el.type) &&
-      !el.readOnly && location.hostname === 'cicero.systematic.com' && !(el.closest && el.closest('[data-cnfc]'));
+      !el.readOnly && window.__cnfc.cicero() && !(el.closest && el.closest('[data-cnfc]'));
   }
   function kind(el) {
     if (!usable(el)) return null;
@@ -2201,22 +2295,8 @@ private val RFID_SETUP_JS = """
   if (window.__cnfcSetupBusy) return;
   window.__cnfcSetupBusy = true;
   var PORT = '%PORT%';
+  var H = window.__cnfc, textOf = H.textOf, visible = H.visible, sleep = H.sleep, waitFor = H.waitFor;
   function report(m) { window.__cnfcSetupBusy = false; try { CiceroNFC.setupResult(m); } catch (e) {} }
-  function visible(el) { return !!(el && el.offsetParent !== null); }
-  function textOf(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); }
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function waitFor(fn, ms) {
-    return new Promise(function (res) {
-      var t0 = Date.now();
-      (function poll() {
-        var v = null;
-        try { v = fn(); } catch (e) {}
-        if (v) return res(v);
-        if (Date.now() - t0 > ms) return res(null);
-        setTimeout(poll, 100);
-      })();
-    });
-  }
   function heading() {
     var all = document.querySelectorAll('h1, h2, h3, h4, h5, h6, div, span, p, legend, mat-card-title');
     for (var i = 0; i < all.length; i++) {
@@ -2233,41 +2313,11 @@ private val RFID_SETUP_JS = """
     for (var i = 0; i < list.length; i++) if (after(h, list[i]) && labelOf(list[i]) === name && visible(list[i])) return list[i];
     return null;
   }
-  function toggle(h, label) {
-    var list = document.querySelectorAll('mat-slide-toggle, .mat-mdc-slide-toggle');
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i].hasAttribute('data-cnfc') && after(h, list[i]) && textOf(list[i]).indexOf(label) >= 0) return list[i];
-    }
-    return null;
-  }
-  function switchOf(t) { return t.querySelector('button[role=switch], input[type=checkbox]') || t; }
-  function isOn(t) {
-    var b = switchOf(t);
-    if (b.getAttribute && b.getAttribute('aria-checked') != null) return b.getAttribute('aria-checked') === 'true';
-    if (b.type === 'checkbox') return b.checked;
-    return t.classList.contains('mat-mdc-slide-toggle-checked') || t.classList.contains('mat-checked');
-  }
-  function setValue(input, v) {
-    var set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    input.focus();
-    set.call(input, v);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    input.dispatchEvent(new FocusEvent('blur'));
-    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-  }
-  function button(name) {
-    var bs = document.querySelectorAll('button');
-    for (var i = 0; i < bs.length; i++) if (textOf(bs[i]) === name && visible(bs[i]) && !bs[i].disabled) return bs[i];
-    return null;
-  }
+  function setValue(input, v) { H.setValue(input, v, true); }
+  var button = H.button;
   function openSettings() {
     if (heading()) return Promise.resolve(true);
-    var user = sessionStorage.getItem('username') || '';
-    var chip = Array.prototype.slice.call(document.querySelectorAll('button, [role=button], a')).filter(function (b) {
-      var t = textOf(b);
-      return user && t.indexOf(user) >= 0 && t.length < 80 && visible(b);
-    })[0];
+    var chip = H.userChip();
     if (!chip) return Promise.resolve(false);
     // Et tryk på navnet åbner Enhedsindstillinger direkte
     chip.click();
@@ -2301,9 +2351,9 @@ private val RFID_SETUP_JS = """
     if (!hi || !pi) throw 'fandt ikke Hostname/Port';
     if (hi.value !== 'localhost') { setValue(hi, 'localhost'); changed.push('hostname'); }
     if (pi.value !== PORT) { setValue(pi, PORT); changed.push('port'); }
-    var tg = toggle(h, 'RFID-scanner til som standard');
+    var tg = H.findToggle('RFID-scanner til som standard', h);
     if (!tg) throw 'fandt ikke kontakten RFID-scanner til som standard';
-    if (!isOn(tg)) { switchOf(tg).click(); changed.push('til som standard'); }
+    if (!H.isOn(tg)) { H.switchOf(tg).click(); changed.push('til som standard'); }
     return sleep(300);
   }).then(function () {
     if (!changed.length) {
@@ -2328,19 +2378,7 @@ private val TAGS_BUTTON_JS = """
 (function () {
   if (window.__cnfcTags) return;
   window.__cnfcTags = true;
-  var logged = false;
-  function textOf(el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); }
-  function visible(el) { return !!(el && el.offsetParent !== null); }
-  function chip() {
-    var user = sessionStorage.getItem('username') || '';
-    if (!user) return null;
-    var list = document.querySelectorAll('button, [role=button], a');
-    for (var i = 0; i < list.length; i++) {
-      var b = list[i], t = textOf(b);
-      if (t.indexOf(user) >= 0 && t.length < 80 && visible(b) && !b.closest('.cdk-overlay-container')) return b;
-    }
-    return null;
-  }
+  var logged = false, H = window.__cnfc;
   function headerOf(c) {
     for (var e = c.parentElement; e && e !== document.body; e = e.parentElement) {
       var r = e.getBoundingClientRect();
@@ -2375,9 +2413,9 @@ private val TAGS_BUTTON_JS = """
     return b;
   }
   function sync() {
-    if (location.hostname !== 'cicero.systematic.com') return;
+    if (!H.cicero()) return;
     var mine = document.querySelector('[data-cnfc="tags"]');
-    var c = chip(), h = c && headerOf(c);
+    var c = H.userChip(), h = c && headerOf(c);
     if (!h) { if (mine) mine.style.display = 'none'; return; }
     if (!mine || mine.parentElement !== h) {
       if (mine) mine.remove();
@@ -2408,21 +2446,8 @@ private val TAGS_BUTTON_JS = """
     mine.style.left = Math.round((left + cr.left) / 2 - hr.left) + 'px';
     mine.style.top = Math.round(cr.top + cr.height / 2 - hr.top) + 'px';
   }
-  // Kører når siden ændrer sig (højst hvert 150 ms, ikke mens fanen er skjult) plus et langsomt ur
-  var timer = null;
-  function kick() {
-    if (timer || document.hidden) return;
-    timer = setTimeout(function () { timer = null; sync(); }, 150);
-  }
   sync();
-  new MutationObserver(function (ms) {
-    for (var i = 0; i < ms.length; i++) {
-      var t = ms[i].target;
-      if (!(t.closest && t.closest('[data-cnfc="tags"]'))) { kick(); return; }
-    }
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
-  addEventListener('resize', kick);
-  setInterval(function () { if (!document.hidden) sync(); }, 2000);
+  H.onChange(sync, '[data-cnfc="tags"]');
   addEventListener('resize', sync);
 })();
 """
@@ -2433,7 +2458,7 @@ private val TAGS_BUTTON_JS = """
  */
 private val SCANNER_CHECK_JS = """
 (function () {
-  if (location.hostname !== 'cicero.systematic.com') return;
+  if (!window.__cnfc.cicero()) return;
   var v = null;
   for (var i = 0; i < localStorage.length; i++) {
     var k = localStorage.key(i) || '';
@@ -2459,7 +2484,7 @@ private val THEME_READ_JS = """
 /** Giver app'en besked i samme øjeblik, Cicero gemmer lys/mørk (Cicero gør det, når kontakten flyttes) */
 private val THEME_WATCH_JS = """
 (function () {
-  if (window.__cnfcTheme || location.hostname !== 'cicero.systematic.com') return;
+  if (window.__cnfcTheme || !window.__cnfc.cicero()) return;
   window.__cnfcTheme = true;
   var orig = Storage.prototype.setItem;
   Storage.prototype.setItem = function (k, v) {
@@ -2519,10 +2544,8 @@ private val STICKY_BUTTONS_JS = """
 (function () {
   if (window.__cnfcSticky) return;
   window.__cnfcSticky = true;
-  var logged = {}, bar = null;
+  var logged = {}, bar = null, H = window.__cnfc, txt = H.textOf, vis = H.visible;
   function log(m) { if (logged[m]) return; logged[m] = 1; try { CiceroNFC.tweak(m); } catch (e) {} }
-  function txt(el) { return ((el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim(); }
-  function vis(el) { return !!el && el.offsetParent !== null; }
   function names(el) {
     var out = [], bs = el.querySelectorAll('button');
     for (var i = 0; i < bs.length && out.length < 5; i++) { var t = txt(bs[i]); if (t && t.length <= 20) out.push(t); }
@@ -2678,20 +2701,9 @@ private val STICKY_BUTTONS_JS = """
     var px = Math.round(innerHeight - bottomY) + 'px';
     if (bar.pill.style.bottom !== px) bar.pill.style.bottom = px;
   }
-  // Kører når siden ændrer sig (ikke på et fast ur): højst hvert 150 ms, aldrig mens fanen er skjult.
-  // Egne ændringer i pillen tæller ikke. Et langsomt ur fanger det, der flytter sig uden at ændre siden.
-  var timer = null;
-  function kick() {
-    if (timer || document.hidden) return;
-    timer = setTimeout(function () { timer = null; sync(); }, 150);
-  }
   sync();
-  new MutationObserver(function (ms) {
-    for (var i = 0; i < ms.length; i++) if (!bar || !bar.pill.contains(ms[i].target)) { kick(); return; }
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'disabled', 'hidden'] });
-  addEventListener('resize', kick);
-  addEventListener('scroll', kick, true);
-  setInterval(function () { if (!document.hidden) sync(); }, 2000);
+  // Også ved rulning: Ciceros klæbende knapper flytter sig uden at siden ændres
+  var kick = H.onChange(sync, '[data-cnfc-bar]', ['scroll']);
 })();
 """
 
@@ -2768,35 +2780,8 @@ private val PIN_TOGGLE_JS = """
     return null;
   }
   function stored() { var k = key(); return !!k && localStorage.getItem(k) === 'true'; }
-  function visible(el) { return !!(el && el.offsetParent !== null); }
-  function textOf(el) { return ((el && (el.innerText || el.textContent)) || '').trim(); }
-  function findToggle(label) {
-    var list = document.querySelectorAll('mat-slide-toggle, .mat-mdc-slide-toggle');
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i].hasAttribute('data-cnfc') && textOf(list[i]).indexOf(label) >= 0) return list[i];
-    }
-    return null;
-  }
-  function switchOf(t) { return t.querySelector('button[role=switch], input[type=checkbox]') || t; }
-  function isOn(t) {
-    var b = switchOf(t);
-    if (b.getAttribute && b.getAttribute('aria-checked') != null) return b.getAttribute('aria-checked') === 'true';
-    if (b.type === 'checkbox') return b.checked;
-    return t.classList.contains('mat-mdc-slide-toggle-checked') || t.classList.contains('mat-checked');
-  }
-  function waitFor(fn, ms) {
-    return new Promise(function (res) {
-      var t0 = Date.now();
-      (function poll() {
-        var v = null;
-        try { v = fn(); } catch (e) {}
-        if (v) return res(v);
-        if (Date.now() - t0 > ms) return res(null);
-        setTimeout(poll, 100);
-      })();
-    });
-  }
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  var H = window.__cnfc, textOf = H.textOf, findToggle = H.findToggle, switchOf = H.switchOf, isOn = H.isOn,
+      waitFor = H.waitFor, sleep = H.sleep;
   function setLook(t, on) {
     t.classList.toggle('mat-mdc-slide-toggle-checked', on);
     t.classList.toggle('mat-checked', on);
@@ -2816,7 +2801,6 @@ private val PIN_TOGGLE_JS = """
     var hide = document.createElement('style');
     hide.textContent = '.cdk-overlay-container { opacity: 0 !important; }';
     document.head.appendChild(hide);
-    var user = sessionStorage.getItem('username') || '';
     var page = findToggle('Send kvittering');
     var hidden = [];
     // Det øverste element, der ikke også rummer selve udlånsbilledet = panelet
@@ -2848,10 +2832,7 @@ private val PIN_TOGGLE_JS = """
       setTimeout(function () { hidden.forEach(function (h) { if (h.isConnected) h.style.removeProperty('visibility'); }); }, 600);
       return r;
     }
-    var chip = Array.prototype.slice.call(document.querySelectorAll('button, [role=button], a')).filter(function (b) {
-      var t = textOf(b);
-      return user && t.indexOf(user) >= 0 && t.length < 80 && visible(b);
-    })[0];
+    var chip = H.userChip();
     if (!chip) return Promise.resolve(done('fandt ikke brugermenuen'));
     // Et tryk på navnet åbner Enhedsindstillinger direkte
     chip.click();
@@ -2862,11 +2843,7 @@ private val PIN_TOGGLE_JS = """
       var p = Promise.resolve();
       for (var c = 0; c < clicks; c++) p = p.then(function () { switchOf(tg).click(); return sleep(150); });
       return p.then(function () {
-        return waitFor(function () {
-          var bs = document.querySelectorAll('button');
-          for (var i = 0; i < bs.length; i++) if (textOf(bs[i]) === 'Gem' && visible(bs[i]) && !bs[i].disabled) return bs[i];
-          return null;
-        }, 2000);
+        return waitFor(function () { return H.button('Gem'); }, 2000);
       }).then(function (gem) {
         if (!gem) return done('fandt ikke Gem');
         gem.click();
@@ -2915,6 +2892,7 @@ private val PIN_TOGGLE_JS = """
     }
   }
   function sync() {
+    if (!H.cicero()) return;
     var host = findToggle('Send kvittering');
     var mine = document.querySelector('[data-cnfc="pin"]');
     if (!host || !onLoanTab()) { if (mine) mine.remove(); return; }
@@ -2941,20 +2919,6 @@ private val PIN_TOGGLE_JS = """
     mine.style.opacity = busy ? '0.5' : '';
     place(host, mine);
   }
-  // Kører når siden ændrer sig (højst hvert 150 ms, ikke mens fanen er skjult) plus et langsomt ur
-  var timer = null;
-  function kick() {
-    if (timer || document.hidden || location.hostname !== 'cicero.systematic.com') return;
-    timer = setTimeout(function () { timer = null; sync(); }, 150);
-  }
-  new MutationObserver(function (ms) {
-    for (var i = 0; i < ms.length; i++) {
-      var t = ms[i].target;
-      if (!(t.closest && t.closest('[data-cnfc="pin"]'))) { kick(); return; }
-    }
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
-  addEventListener('resize', kick);
-  kick();
-  setInterval(function () { if (!document.hidden && location.hostname === 'cicero.systematic.com') sync(); }, 2000);
+  H.onChange(sync, '[data-cnfc="pin"]')();
 })();
 """

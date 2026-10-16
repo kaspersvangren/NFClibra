@@ -48,11 +48,21 @@ object Server {
     private val tickets = ArrayList<Pair<String, Long>>()
     private const val TICKET_MS = 10_000L
 
+    /** %XX-afkodning, hvor '+' bliver stående (som Androids Uri.decode); ugyldige tegn bliver som de er */
+    fun pctDecode(s: String): String = try {
+        URLDecoder.decode(s.replace("+", "%2B"), "UTF-8")
+    } catch (_: IllegalArgumentException) {
+        s
+    }
+
+    /** Stien, som billet og håndtering ser den: afkodet, uden slut-skråstreg */
+    fun normalPath(rawPath: String): String = pctDecode(rawPath).trimEnd('/').ifEmpty { "/" }
+
     /** Samme form på begge sider: METODE + afkodet sti (uden slut-skråstreg) + afkodede parametre */
     fun ticketKey(method: String, target: String): String {
         val q = target.indexOf('?')
-        val path = android.net.Uri.decode(if (q >= 0) target.substring(0, q) else target).trimEnd('/').ifEmpty { "/" }
-        val query = if (q >= 0) android.net.Uri.decode(target.substring(q + 1)) else ""
+        val path = normalPath(if (q >= 0) target.substring(0, q) else target)
+        val query = if (q >= 0) pctDecode(target.substring(q + 1)) else ""
         return method.uppercase() + " " + path + (if (query.isEmpty()) "" else "?$query")
     }
 
@@ -349,7 +359,7 @@ object Server {
         val q = target.indexOf('?')
         // Stien normaliseres som i billetten (afkodet, uden slut-skråstreg), så en forespørgsel aldrig kan
         // matche en billet og alligevel ende et andet sted i route()
-        val path = android.net.Uri.decode(if (q >= 0) target.substring(0, q) else target).trimEnd('/').ifEmpty { "/" }
+        val path = normalPath(if (q >= 0) target.substring(0, q) else target)
         val query = HashMap<String, String>()
         if (q >= 0) {
             for (pair in target.substring(q + 1).split('&')) {

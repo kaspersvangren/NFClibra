@@ -11,14 +11,15 @@ object Changelog {
 
     private val LINE = Regex("""^- \*\*(\d+\.\d+\.(\d+))\*\* – (.+)$""")
 
-    fun entries(ctx: Context): List<Entry> = try {
-        ctx.assets.open("CHANGELOG.md").bufferedReader().use { r ->
-            r.readLines().mapNotNull { line ->
-                LINE.find(line.trim())?.let { m ->
-                    Entry(m.groupValues[1], m.groupValues[2].toLong(), m.groupValues[3].trim())
-                }
-            }
+    /** Linjerne fra CHANGELOG.md → versioner; linjer, der ikke følger formen (fx "Næste version"), springes over */
+    fun parse(lines: List<String>): List<Entry> = lines.mapNotNull { line ->
+        LINE.find(line.trim())?.let { m ->
+            Entry(m.groupValues[1], m.groupValues[2].toLong(), m.groupValues[3].trim())
         }
+    }
+
+    fun entries(ctx: Context): List<Entry> = try {
+        ctx.assets.open("CHANGELOG.md").bufferedReader().use { r -> parse(r.readLines()) }
     } catch (_: Exception) {
         emptyList()
     }

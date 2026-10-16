@@ -19,14 +19,13 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.ComponentActivity
 import kotlin.math.abs
 
 /**
  * Guide til NFClibra: en række sider med en lille tegning (mockup) af det, der forklares, og et par linjer tekst.
  * Tegningerne er kun billeder – intet i app'en eller i Cicero bliver åbnet eller ændret.
  */
-class GuideActivity : ComponentActivity() {
+class GuideActivity : LockedScreen() {
     companion object {
         const val EXTRA_DARK = "dark"
     }
@@ -48,7 +47,6 @@ class GuideActivity : ComponentActivity() {
     private lateinit var backBtn: TextView
     private lateinit var nextBtn: TextView
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun dpf(v: Float) = v * resources.displayMetrics.density
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -836,24 +834,4 @@ class GuideActivity : ComponentActivity() {
         }
     }
 
-    /** Tryk tæller som brug; er app'en låst eller glemt i 2 minutter, lukkes guiden */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
-        Hub.lastActivity = SystemClock.elapsedRealtime()
-        return super.dispatchTouchEvent(ev)
-    }
-
-    /** Låses der, mens guiden er fremme, lukkes den med det samme */
-    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
-
-    override fun onResume() {
-        super.onResume()
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return }
-        Hub.onLockListeners.addIfAbsent(onLock)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        Hub.onLockListeners.remove(onLock)
-    }
 }

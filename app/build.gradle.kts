@@ -47,6 +47,11 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
     }
+
+    // Enhedstests kører på byggemaskinen uden Android; Android-klasser svarer tomt i stedet for at fejle
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -59,4 +64,7 @@ dependencies {
     implementation("androidx.camera:camera-mlkit-vision:1.4.1")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
+
+    // Enhedstests (chip-format, billetnøgle, ændringsliste) – kører før hver udgivelse
+    testImplementation("junit:junit:4.13.2")
 }

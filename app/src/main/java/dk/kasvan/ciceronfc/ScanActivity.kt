@@ -12,12 +12,10 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Size
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -38,7 +36,7 @@ import java.util.concurrent.Executors
  * Kamera, der læser materialenummeret – både stregkoder og trykte tal (fx på en etiket i bogen).
  * Viser de numre, den kan se; man trykker på det rigtige. Alt genkendes på telefonen; intet sendes nogen steder hen.
  */
-class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
+class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     companion object {
         const val EXTRA_VALUE = "value"
         const val EXTRA_DARK = "dark"
@@ -81,7 +79,6 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         if (ok) startCamera() else { hint.text = "Kameraet er ikke tilladt – giv lov i telefonens indstillinger"; }
     }
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -295,35 +292,22 @@ class ScanActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    /** Tryk tæller som brug; er app'en låst eller glemt i 2 minutter, lukkes kameraet i stedet */
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return true }
-        Hub.lastActivity = SystemClock.elapsedRealtime()
-        return super.dispatchTouchEvent(ev)
-    }
-
     // Holder på NFC, mens kameraet er fremme – ellers melder Android "ingen understøttede apps", når bogen er tæt på
     override fun onTagDiscovered(tag: android.nfc.Tag?) {}
 
-    /** Låses der, mens kameraet er fremme, lukkes det med det samme */
-    private val onLock: () -> Unit = { runOnUiThread { if (!isFinishing) finish() } }
-
     override fun onResume() {
         super.onResume()
-        // Kommer man tilbage efter mere end 2 minutter, lukkes kameraet og værktøjet, så app'en låser
-        if (Hub.locked || Hub.idleTooLong()) { finish(); return }
+        if (isFinishing) return
         try {
             nfc?.enableReaderMode(this, this,
                 NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_NFC_F or
                     NfcAdapter.FLAG_READER_NFC_V or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
                 null)
         } catch (_: Exception) {}
-        Hub.onLockListeners.addIfAbsent(onLock)
     }
 
     override fun onPause() {
         super.onPause()
-        Hub.onLockListeners.remove(onLock)
         try { nfc?.disableReaderMode(this) } catch (_: Exception) {}
     }
 

@@ -54,7 +54,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
+          # Enhedstests først: fejler de, udgives der ikke
+          gradle :app:testReleaseUnitTest :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
 
       - name: Slet nøglen fra byggemaskinen
         if: always()
