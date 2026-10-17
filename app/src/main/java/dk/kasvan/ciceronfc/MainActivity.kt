@@ -1060,7 +1060,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     "NFClibra er ikke lavet af eller godkendt af Systematic. Cicero er Systematics produkt.\n\n" +
                     "Sikkerhed: NFClibra låser efter 2 minutter uden brug og med det samme, når skærmen slukkes eller app'en forlades. " +
                     "RFID-serveren på telefonen tager kun imod Cicero inde i NFClibra – ikke andre apps eller hjemmesider.\n\n" +
-                    "Designet og testet af Kasper Svangren, Gladsaxe Bibliotekerne. Kodet med AI-assistance (Claude).\n\n" +
+                    "Udviklet privat af Kasper Svangren, der arbejder som bibliotekar i Gladsaxe. Gladsaxe Kommune står ikke bag app'en. Kodet med AI-assistance (Claude).\n\n" +
                     "Tak til Deichman bibliotek i Oslo for go-feig (MIT-licens), hvis protokol Cicero taler med RFID-læseren. " +
                     "Der er ikke kopieret kode.",
             )

@@ -23,15 +23,15 @@ import kotlin.concurrent.thread
 object Updater {
     // Lille fil, som byggeriet lægger ved hver udgivelse. Den tæller ikke med i GitHubs grænse på
     // 60 opslag i timen (som alle telefoner på samme net deler), så der kan tjekkes ofte.
-    private const val VERSION_FILE = "https://github.com/kaspersvangren/cicero-nfc/releases/latest/download/version.json"
+    private const val VERSION_FILE = "https://github.com/kaspersvangren/nfclibra/releases/latest/download/version.json"
     // Reserve, hvis filen ikke kan hentes
-    private const val API = "https://api.github.com/repos/kaspersvangren/cicero-nfc/releases/latest"
-    // Begge projektnavne godtages, så projektet senere kan omdøbes uden at opdateringen går i stykker
+    private const val API = "https://api.github.com/repos/kaspersvangren/nfclibra/releases/latest"
+    // Projektet hed før cicero-nfc; GitHub sender de gamle adresser videre, så begge godtages
     private val DOWNLOAD_PREFIXES = listOf(
-        "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
         "https://github.com/kaspersvangren/nfclibra/releases/download/",
+        "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
     )
-    private val APK_NAMES = setOf("CiceroNFC.apk", "NFClibra.apk")
+    private val APK_NAMES = setOf("NFClibra.apk", "CiceroNFC.apk")
     private const val CHECK_EVERY_MS = 15 * 60 * 1000L
 
     class Info(val name: String, val url: String, val notes: String)
@@ -96,7 +96,7 @@ object Updater {
             readTimeout = 10_000
             useCaches = false
             if (json) setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("User-Agent", "CiceroNFC")
+            setRequestProperty("User-Agent", "NFClibra")
         }
         if (c.responseCode != 200) throw IOException("GitHub svarede ${c.responseCode}")
         return c.inputStream.bufferedReader().use { it.readText() }
@@ -118,7 +118,8 @@ object Updater {
         val assets = j.getJSONArray("assets")
         for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
-            if (a.getString("name") in APK_NAMES) url = a.getString("browser_download_url")
+            val name = a.getString("name")
+            if (name in APK_NAMES && (url.isEmpty() || name == "NFClibra.apk")) url = a.getString("browser_download_url")
         }
         return Triple(j.getString("tag_name"), url, j.optString("body", ""))
     }
@@ -135,7 +136,7 @@ object Updater {
                 val c = (URL(info.url).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 15_000
                     readTimeout = 30_000
-                    setRequestProperty("User-Agent", "CiceroNFC")
+                    setRequestProperty("User-Agent", "NFClibra")
                 }
                 if (c.responseCode != 200) throw IOException("GitHub svarede ${c.responseCode}")
                 val total = c.contentLengthLong
@@ -176,7 +177,7 @@ object Updater {
         params.setAppPackageName(ctx.packageName)
         val id = pi.createSession(params)
         pi.openSession(id).use { s ->
-            s.openWrite("CiceroNFC.apk", 0, f.length()).use { out ->
+            s.openWrite("NFClibra.apk", 0, f.length()).use { out ->
                 f.inputStream().use { it.copyTo(out) }
                 s.fsync(out)
             }

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "cicero-nfc"
+rootProject.name = "nfclibra"
 include(":app")
