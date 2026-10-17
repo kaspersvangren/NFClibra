@@ -23,12 +23,12 @@ import kotlin.concurrent.thread
 object Updater {
     // Lille fil, som byggeriet lægger ved hver udgivelse. Den tæller ikke med i GitHubs grænse på
     // 60 opslag i timen (som alle telefoner på samme net deler), så der kan tjekkes ofte.
-    private const val VERSION_FILE = "https://github.com/kaspersvangren/nfclibra/releases/latest/download/version.json"
+    private const val VERSION_FILE = "https://github.com/kaspersvangren/NFClibra/releases/latest/download/version.json"
     // Reserve, hvis filen ikke kan hentes
-    private const val API = "https://api.github.com/repos/kaspersvangren/nfclibra/releases/latest"
+    private const val API = "https://api.github.com/repos/kaspersvangren/NFClibra/releases/latest"
     // Projektet hed før cicero-nfc; GitHub sender de gamle adresser videre, så begge godtages
     private val DOWNLOAD_PREFIXES = listOf(
-        "https://github.com/kaspersvangren/nfclibra/releases/download/",
+        "https://github.com/kaspersvangren/NFClibra/releases/download/",
         "https://github.com/kaspersvangren/cicero-nfc/releases/download/",
     )
     private val APK_NAMES = setOf("NFClibra.apk", "CiceroNFC.apk")
@@ -72,7 +72,8 @@ object Updater {
                 }
                 val code = Regex("""^v\d+\.\d+\.(\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
                     ?: throw IOException("ukendt versionsnummer $tag")
-                if (DOWNLOAD_PREFIXES.none { u.startsWith(it) } || APK_NAMES.none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
+                // GitHub skelner ikke mellem store og små bogstaver i projektnavnet
+                if (DOWNLOAD_PREFIXES.none { u.startsWith(it, ignoreCase = true) } || APK_NAMES.none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
                 // Kort ændringsliste fra udgivelsen (uden byggelinjen), højst 600 tegn
                 val notes = rawNotes.lines()
                     .filterNot { it.startsWith("Bygget fra") }

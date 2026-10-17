@@ -15,7 +15,7 @@ Gladsaxe Kommune står ikke bag app'en. Kodet med AI-assistance (Claude).
 
 ## Hent
 
-Seneste version: [NFClibra.apk](https://github.com/kaspersvangren/nfclibra/releases/latest/download/NFClibra.apk)
+Seneste version: [NFClibra.apk](https://github.com/kaspersvangren/NFClibra/releases/latest/download/NFClibra.apk)
 
 Kræver Android 8 eller nyere med NFC. Testet på Motorola Edge 50 Fusion (Android 16)
 med NXP ICODE SLIX og SLIX2-tags.
