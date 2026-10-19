@@ -1840,6 +1840,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 Hub.Fb.ALARM_ON -> { pillColor = orange; pillIconRes = R.drawable.ic_bell; pillWords = "Alarm til" }
                 Hub.Fb.WRITTEN -> { pillColor = green; pillIconRes = R.drawable.ic_check; pillWords = "Skrevet" }
                 Hub.Fb.ERROR -> { pillColor = red; pillIconRes = R.drawable.ic_warn; pillWords = Hub.statusText }
+                // Sæt i flere dele: "Sæt 2 af 5" mens delene samles, derefter hvilke dele der mangler alarm
+                Hub.Fb.SET -> { pillColor = pal.blue; pillIconRes = R.drawable.ic_rfid_on; pillWords = Hub.statusText }
+                Hub.Fb.SET_ALARM -> {
+                    pillColor = if (Hub.setAlarmOn) orange else green
+                    pillIconRes = if (Hub.setAlarmOn) R.drawable.ic_bell else R.drawable.ic_bell_off
+                    pillWords = Hub.statusText
+                }
             }
         }
 

@@ -44,6 +44,17 @@ Hold bogen mod bagsiden af telefonen:
 | Rød pille | fejl, fx bogen fjernet for tidligt | tre hurtige |
 | Grå pille, flueben | læst på en side uden alarmskift | – |
 | Rød pille "RFID-fejl" | Hostname og/eller Port i Ciceros RFID-opsætning er forkert (fx et mellemrum); tryk for vejledning | – |
+| Blå pille "Sæt 2 af 5" | del af et sæt – hold næste del mod telefonen | kort tik |
+| Pille "Alarm mangler" | alarmen er skiftet på delen ved telefonen – hold de viste dele mod telefonen | to korte |
+
+### Sæt i flere dele
+
+Telefonen læser én chip ad gangen, men Cicero vil se alle dele af et sæt på én gang. Holdes en del af et sæt mod
+telefonen, mens Cicero lytter, samler app'en delene op én ad gangen ("Sæt 2 af 5 – hold næste del") og melder
+dem først til Cicero, når alle er læst – som når hele sættet ligger på skrankens læser. Skifter Cicero så alarmen,
+skiftes den med det samme på delen ved telefonen, og app'en viser, hvilke dele der mangler ("Alarm mangler – hold
+del 1, 2, 4 mod telefonen"). Andre materialer ignoreres, indtil sættet er færdigt. Bliver et sæt ikke gjort færdigt
+(1 minut uden ny del, 2 minutter for alarmen), opgives det, og loggen siger hvilke dele der mangler.
 
 ## Værktøj til tags (knappen nederst i menuen ⚙)
 
