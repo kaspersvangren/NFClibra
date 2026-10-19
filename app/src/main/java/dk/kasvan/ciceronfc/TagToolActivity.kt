@@ -577,11 +577,23 @@ class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         present = true
         pingFails = 0
         info = readInfo(pt)
+        logRead(info!!)
         if (pending == null) say("", fg)
         showInfo()
         if (pending == null) prefill(info)
         vibrate(longArrayOf(0, 50))
         maybeProgram()
+    }
+
+    /** Hver læsning i loggen (materialenummer, del, bibliotek, alarm) – så fejl kan findes bagefter */
+    private fun logRead(i: Info) {
+        val c = i.content
+        val what = when {
+            i.blank -> "tom chip"
+            c == null -> "chip uden dansk datamodel"
+            else -> "${c.barcode.ifEmpty { "(intet nummer)" }} · del ${c.seqNum} af ${c.numItems} · ${c.library.ifEmpty { "intet bibliotek" }}"
+        }
+        LogBuf.add("Værktøj læst: $what · alarm ${Hub.afiText(i.afi)}")
     }
 
     private fun readInfo(pt: PhoneTag): Info {

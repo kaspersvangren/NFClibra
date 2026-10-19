@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Fingeraftrykket kommer frem med det samme, når app'en starter (før ventede den et par sekunder på, at Cicero var indlæst). Lander Cicero på login-siden, lukkes det igen af sig selv.
+- **Næste version** – Fingeraftrykket kommer frem med det samme, når app'en starter (før ventede den et par sekunder på, at Cicero var indlæst). Lander Cicero på login-siden, lukkes det igen af sig selv. Værktøj til tags skriver hver læsning i loggen (materialenummer, del, bibliotek og alarm).
 - **0.1.87** – Oplåsningen hænger ikke længere, når man åbner app'en efter en pause: Cicero har så logget én ud og straks ind igen (login-siden vises et øjeblik), og app'en lukkede telefonens oplåsning, men ventede stadig på svar fra den. Nu startes en ny oplåsning med det samme.
 - **0.1.86** – Navnet Cicero er fjernet fra filen og projektet: app'en hentes nu som NFClibra.apk fra github.com/kaspersvangren/NFClibra (de gamle links virker stadig). Om-teksten siger, at app'en er udviklet privat, og at Gladsaxe Kommune ikke står bag.
 - **0.1.85** – Oprydning efter gennemgangen (ingen synlige ændringer): de scripts, app'en lægger ind i Cicero, deler nu ét sæt hjælpefunktioner i stedet for hver sin kopi; Værktøj til tags, kameraet og guiden deler den samme låse-logik; og der er kommet automatiske tests af chip-formatet, serverens billetnøgle og ændringslisten, som kører før hver udgivelse.
