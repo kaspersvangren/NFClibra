@@ -63,8 +63,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val LOCK_AFTER_MS = 2 * 60 * 1000L
         /** Ciceros login-side (Keycloak). Står app'en her, er man ikke logget ind. */
         const val LOGIN_HOST = "auth.cicero.systematic.com"
-        const val MAX_PAGE_WAIT_MS = 5000L
-        const val QUIET_AFTER_LOAD_MS = 1500L
         const val CICERO_HOST = "cicero.systematic.com"
         const val PREF_PIN_PAD = "pinPad"
         const val PREF_PIN_FLIP = "pinPadFlip"
@@ -163,16 +161,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // Hvilken side Cicero står på – login-siden betyder "ikke logget ind", og så låser app'en ikke
     @Volatile private var pageHost: String? = null
     private var pageLoading = false
-    private var waitingForPage = false
     /** Låst op, fordi login-siden stod fremme – tidspunktet, så et login uden tryk kan opdages */
     private var loginUnlockAt = -1L
     // Låst op med fingeraftryk/pinkode (ikke bare fordi Cicero stod på login-siden) – kræves til Værktøj til tags
     private var userUnlocked = false
     private var openToolAfterUnlock = false
-    private val delayedAuth = Runnable {
-        waitingForPage = false
-        if (Hub.locked && resumed) authenticate()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -500,20 +493,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun onLoginPage() = pageHost == LOGIN_HOST
 
     /**
-     * Låst og app'en kommer frem: står Cicero på login-siden, er der intet at beskytte.
-     * Kender vi ikke siden endnu (opstart), ventes der kort på, at Cicero er indlæst.
+     * Låst og app'en kommer frem: står Cicero på login-siden, er der intet at beskytte. Ellers spørges der
+     * med det samme – også ved opstart, før Cicero er indlæst. Lander Cicero så på login-siden, lukker
+     * app'en selv oplåsningen igen (onPageChanged).
      */
     private fun startUnlockFlow() {
         if (!Hub.locked || authInProgress) return
-        when {
-            onLoginPage() -> unlock("Ikke logget ind i Cicero – ingen lås", byLoginPage = true)
-            pageHost != null && !pageLoading -> authenticate()
-            else -> {
-                waitingForPage = true
-                handler.removeCallbacks(delayedAuth)
-                handler.postDelayed(delayedAuth, MAX_PAGE_WAIT_MS)
-            }
-        }
+        if (onLoginPage()) unlock("Ikke logget ind i Cicero – ingen lås", byLoginPage = true) else authenticate()
     }
 
     private var lastSection: String? = null
@@ -557,15 +543,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
             return
         }
+        // Låst, men Cicero står på login-siden: intet at beskytte – en åben oplåsning lukkes igen
         if (onLoginPage()) {
-            handler.removeCallbacks(delayedAuth)
-            waitingForPage = false
             if (authInProgress) cancelAuth()
             unlock("Ikke logget ind i Cicero – ingen lås", byLoginPage = true)
-        } else if (waitingForPage && !pageLoading) {
-            // Giv Cicero et øjeblik til evt. at sende videre til login, før der spørges
-            handler.removeCallbacks(delayedAuth)
-            handler.postDelayed(delayedAuth, QUIET_AFTER_LOAD_MS)
         }
     }
 
@@ -696,8 +677,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     /** Telefonens egen skærmlås: fingeraftryk, ansigt eller pinkode. App'en ser aldrig selve koden. */
     private fun authenticate() {
         if (authInProgress) return
-        handler.removeCallbacks(delayedAuth)
-        waitingForPage = false
         if (!isDeviceSecure()) { unlock(); return }
         authInProgress = true
         if (Build.VERSION.SDK_INT >= 30) {
@@ -1788,8 +1767,6 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         handler.removeCallbacks(themeTicker)
         handler.removeCallbacks(lockTicker)
-        handler.removeCallbacks(delayedAuth)
-        waitingForPage = false
         // Pinkoden må ikke blive stående på skærmen, hvis app'en forlades
         pinPad.hide()
         staffKeys.hide()
