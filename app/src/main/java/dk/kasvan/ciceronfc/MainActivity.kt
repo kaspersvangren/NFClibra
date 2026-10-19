@@ -137,6 +137,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private val scanRequestCode = 44
     private lateinit var lockView: LinearLayout
     private lateinit var pinPad: PinPad
+    /** Pop-op'en for sæt i flere dele */
+    private lateinit var setPanel: SetPanel
     private lateinit var staffKeys: StaffKeys
     private lateinit var lockIcon: LockLogo
     private lateinit var lockTitle: TextView
@@ -374,8 +376,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
             setBig(prefs().getBoolean(PREF_PIN_BIG, false))
         }
+        setPanel = SetPanel(this, ::dp).apply { onStop = { Hub.stopSet() } }
         container = FrameLayout(this).apply {
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            // Sæt i flere dele: over Cicero, men under låsen
+            addView(setPanel.view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             // Pinkode-tastaturet ligger over Cicero, men under låsen
             addView(pinPad.view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(lockView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -784,6 +789,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         lockView.setBackgroundColor(pal.bar)
         pinPad.setColors(bg = pal.bar, text = pal.text, sub = pal.sub, key = pal.offCircle, blue = pal.blue)
         staffKeys.setColors(bg = pal.bar, text = pal.text, key = pal.offCircle, blue = pal.blue)
+        setPanel.setColors(card = pal.bar, text = pal.text, sub = pal.sub, blue = pal.blue, green = green, orange = orange, button = pal.offCircle)
         lockIcon.setColors(body = pal.text, shackle = pal.sub, cutout = pal.bar)
         lockTitle.setTextColor(pal.text)
         lockHint.setTextColor(pal.sub)
@@ -1819,6 +1825,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
         val setup = if (problem == null) setupError else null
         val fb = Hub.feedback
+        if (::setPanel.isInitialized) setPanel.update(if (Hub.locked) null else Hub.setView)
 
         // Bjælken forbliver neutral; en lille farvet pille bærer budskabet
         var pillColor: Int? = null

@@ -334,6 +334,42 @@ object Hub {
     }
 
     private var activeSet: SetRun? = null
+
+    /** Det pop-op'en viser (SetPanel). Kun læst af skærmen; skiftes ud som helhed. */
+    class SetView(
+        val barcode: String, val total: Int, val phase: Int,
+        val read: Set<Int>, val alarmDone: Set<Int>, val here: Int?, val alarmOn: Boolean,
+    ) {
+        companion object { const val COLLECT = 0; const val WAIT = 1; const val ALARM = 2; const val DONE = 3 }
+    }
+
+    @Volatile var setView: SetView? = null
+        private set
+
+    private fun publishSet(run: SetRun?, done: Boolean = false) {
+        setView = run?.let { r ->
+            val phase = when {
+                done -> SetView.DONE
+                !r.reported -> SetView.COLLECT
+                r.alarmValue == null -> SetView.WAIT
+                else -> SetView.ALARM
+            }
+            val here = current?.takeIf { it.inSet }?.content?.takeIf { it.barcode == r.barcode }?.seqNum
+            val alarmDone = if (r.alarmValue == null) emptySet() else
+                (1..r.total).filter { it in r.parts && it !in r.missingAlarm }.toSet()
+            SetView(r.barcode, r.total, phase, r.parts.keys.toSet(), alarmDone, here, r.alarmValue == AFI_ON)
+        }
+        statusListener?.invoke()
+    }
+
+    /** Afbryd/Luk/Stop i pop-op'en */
+    fun stopSet() = exec.execute {
+        val run = activeSet ?: return@execute
+        val missing = if (run.alarmValue != null) run.missingText() else ""
+        finishSet("stoppet i app'en")
+        if (missing.isNotEmpty()) signal(Fb.ERROR, "Alarm mangler", "Del $missing – ret i Værktøj til tags")
+        else signal(Fb.IDLE, "")
+    }
     private const val MAX_SET = 50
     private const val SET_COLLECT_MS = 60_000L   // alle dele skal være læst inden for et minut fra sidste del
     private const val SET_WAIT_MS = 60_000L      // meldt, men Cicero skifter ikke alarm (fx en opslagsside)
@@ -368,6 +404,7 @@ object Hub {
             run.parts[c.seqNum] = state
             val missing = run.missingParts()
             if (missing.isNotEmpty()) {
+                publishSet(run)
                 signal(Fb.SET, "Sæt ${run.parts.size} af ${run.total}", "Hold næste del: ${missing.joinToString(", ")}")
             } else {
                 reportSet(run)
@@ -381,12 +418,14 @@ object Hub {
         inventory[state.mac] = state
         val want = run.alarmValue
         if (want == null) {
+            publishSet(run)
             signal(Fb.SET, "Sæt meldt", "${run.barcode} – venter på Cicero")
             return
         }
         if (c.seqNum in run.missingAlarm) {
-            if (!setAfi(state, want)) return
+            if (!setAfi(state, want)) { publishSet(run); return }
             run.missingAlarm.remove(c.seqNum)
+            LogBuf.add("${alarmWord(want)}: ${state.label()}")
         }
         if (run.missingAlarm.isEmpty()) alarmDone(run) else signalSetAlarm(run)
     }
@@ -399,6 +438,7 @@ object Hub {
             Server.broadcast("addTag", s.toJson().toString())
         }
         LogBuf.add("Sæt komplet: ${run.barcode} – alle ${run.total} dele meldt til Cicero")
+        publishSet(run)
         signal(Fb.READ, "Hold stille", "${run.barcode} – alle ${run.total} dele")
         settleToSeenLater()
     }
@@ -417,13 +457,13 @@ object Hub {
 
     /** Cicero bad om alarm til/fra på et meldt sæt: delen ved telefonen nu, resten efterhånden */
     private fun setAlarm(run: SetRun, value: Int): Result {
-        val word = if (value == AFI_ON) "TIL (sikret)" else "FRA (udlånt)"
+        val word = if (value == AFI_ON) "TIL" else "FRA"
         run.alarmValue = value
         run.touched = SystemClock.elapsedRealtime()
         run.missingAlarm.clear()
         for ((seq, s) in run.parts) {
             if (s.afi == value) continue
-            if (s === current && setAfi(s, value)) continue
+            if (s === current && setAfi(s, value)) { LogBuf.add("${alarmWord(value)}: ${s.label()}"); continue }
             run.missingAlarm.add(seq)
         }
         if (run.missingAlarm.isEmpty()) {
@@ -436,24 +476,35 @@ object Hub {
         return Result(200, "OK")
     }
 
+    private fun alarmWord(v: Int) = if (v == AFI_ON) "Alarm til" else "Alarm fra"
+
     private fun signalSetAlarm(run: SetRun) {
+        publishSet(run)
         setAlarmOn = run.alarmValue == AFI_ON
         signal(Fb.SET_ALARM, "Alarm mangler", "Hold del ${run.missingText()} mod telefonen")
     }
 
     private fun alarmDone(run: SetRun) {
         val on = run.alarmValue == AFI_ON
-        val word = if (on) "TIL (sikret)" else "FRA (udlånt)"
+        val word = if (on) "TIL" else "FRA"
         LogBuf.add("Alarm $word: ${run.barcode} – alle ${run.total} dele")
         val detail = "${run.barcode} – alle ${run.total} dele"
         if (on) signal(Fb.ALARM_ON, "Alarm til", detail) else signal(Fb.ALARM_OFF, "Alarm fra", detail)
-        finishSet(null)
+        finishSet(null, done = true)
+        // Pop-op'en viser "færdig" i 2 sekunder; derefter tilbage til "Klar"
+        val seq = feedbackSeq
+        exec.schedule(Runnable {
+            if (activeSet == null) publishSet(null)
+            if (feedbackSeq == seq) signal(Fb.IDLE, "")
+        }, 2000, TimeUnit.MILLISECONDS)
     }
 
     /** Sættet er færdigt eller opgivet: Cicero får "væk" for delene, og alt glemmes */
-    private fun finishSet(why: String?) {
+    private fun finishSet(why: String?, done: Boolean = false) {
         val run = activeSet ?: return
         activeSet = null
+        // Færdig: pop-op'en viser det kort (lukkes af alarmDone); ellers forsvinder den med det samme
+        publishSet(if (done) run else null, done)
         if (why != null) {
             when {
                 !run.reported -> LogBuf.add("Sæt afbrudt ($why): ${run.barcode} – del ${run.missingParts().joinToString(", ")} blev ikke læst; Cicero har intet fået")
@@ -546,6 +597,7 @@ object Hub {
             // Del af et sæt: Cicero skal stadig tro, at den ligger der, indtil sættet er færdigt
             if (current === s) current = null
             s.phone.close()
+            activeSet?.let { publishSet(it) }
             return
         }
         inventory.remove(s.mac)
@@ -592,7 +644,7 @@ object Hub {
 
     fun alarm(on: Boolean): Result = onExec {
         val value = if (on) AFI_ON else AFI_OFF
-        val word = if (on) "TIL (sikret)" else "FRA (udlånt)"
+        val word = if (on) "TIL" else "FRA"
         if (locked) return@onExec Result(423, "Locked")
         activeSet?.let { run -> if (run.reported) return@onExec setAlarm(run, value) }
         if (inventory.isEmpty()) {
@@ -682,8 +734,8 @@ object Hub {
     // ---------- Hjælpere ----------
 
     fun afiText(afi: Int?): String = when (afi) {
-        AFI_ON -> "sikret"
-        AFI_OFF -> "udlånt"
+        AFI_ON -> "til"
+        AFI_OFF -> "fra"
         null -> "ukendt"
         else -> "0x%02X".format(afi)
     }

@@ -50,10 +50,10 @@ Hold bogen mod bagsiden af telefonen:
 ### Sæt i flere dele
 
 Telefonen læser én chip ad gangen, men Cicero vil se alle dele af et sæt på én gang. Holdes en del af et sæt mod
-telefonen, mens Cicero lytter, samler app'en delene op én ad gangen ("Sæt 2 af 5 – hold næste del") og melder
-dem først til Cicero, når alle er læst – som når hele sættet ligger på skrankens læser. Skifter Cicero så alarmen,
-skiftes den med det samme på delen ved telefonen, og app'en viser, hvilke dele der mangler ("Alarm mangler – hold
-del 1, 2, 4 mod telefonen"). Andre materialer ignoreres, indtil sættet er færdigt. Bliver et sæt ikke gjort færdigt
+telefonen, mens Cicero lytter, viser app'en en pop op med en cirkel for hver del og samler delene op én ad gangen.
+De meldes først til Cicero, når alle er læst – som når hele sættet ligger på skrankens læser. Skifter Cicero så
+alarmen, skiftes den med det samme på delen ved telefonen, og cirklerne viser, hvilke dele der mangler (grøn =
+alarm fra, orange = alarm til). Pop op'en lukker af sig selv, når sættet er færdigt. Andre materialer ignoreres, indtil sættet er færdigt. Bliver et sæt ikke gjort færdigt
 (1 minut uden ny del, 2 minutter for alarmen), opgives det, og loggen siger hvilke dele der mangler.
 
 ## Værktøj til tags (knappen nederst i menuen ⚙)
