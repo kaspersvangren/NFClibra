@@ -146,6 +146,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var authInProgress = false
     private var lastAuthEnded = 0L
     private var authCancel: CancellationSignal? = null
+    /** Tæller op for hver oplåsning; et svar fra en tidligere (afbrudt) oplåsning ignoreres */
+    private var authGen = 0
+
+    /**
+     * App'en lukker selv telefonens oplåsning (fx fordi Cicero et øjeblik viser login-siden). Android melder
+     * ikke altid tilbage, at den er lukket – derfor glemmes den her med det samme, så en ny kan startes.
+     */
+    private fun cancelAuth() {
+        authGen++
+        authCancel?.cancel()
+        authCancel = null
+        authInProgress = false
+    }
 
     // Hvilken side Cicero står på – login-siden betyder "ikke logget ind", og så låser app'en ikke
     @Volatile private var pageHost: String? = null
@@ -406,11 +419,9 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     // "oplåsning i gang" (et svar, der aldrig kom), må den startes forfra i stedet for at hænge
                     if (authInProgress) {
                         LogBuf.add("Oplåsning hang – starter forfra")
-                        authCancel?.cancel()
-                        authEnded()
-                        // Et evt. sent "afbrudt"-svar skal nå at lande, før den nye oplåsning starter
-                        handler.postDelayed({ if (Hub.locked && resumed) authenticate() }, 300)
-                    } else authenticate()
+                        cancelAuth()
+                    }
+                    authenticate()
                 } else {
                     // Låst op, men låseskærmen står der stadig: et tryk fjerner den
                     LogBuf.add("Låseskærm fjernet ved tryk")
@@ -549,7 +560,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (onLoginPage()) {
             handler.removeCallbacks(delayedAuth)
             waitingForPage = false
-            authCancel?.cancel()
+            if (authInProgress) cancelAuth()
             unlock("Ikke logget ind i Cicero – ingen lås", byLoginPage = true)
         } else if (waitingForPage && !pageLoading) {
             // Giv Cicero et øjeblik til evt. at sende videre til login, før der spørges
@@ -698,15 +709,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 .build()
             val cancel = CancellationSignal()
             authCancel = cancel
+            val gen = ++authGen
             prompt.authenticate(
                 cancel, mainExecutor,
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        if (gen != authGen) return // en oplåsning, app'en selv har lukket – en ny er i gang
                         authEnded()
                         unlock()
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        if (gen != authGen) return
                         authEnded()
                         openToolAfterUnlock = false
                         // Fx "for mange forsøg" eller "intet fingeraftryk registreret" – hjælper når låsen driller
@@ -1785,8 +1799,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     override fun onDestroy() {
         // Et biometri-svar, der aldrig kommer, må ikke blokere oplåsningen i en genskabt skærm
-        authCancel?.cancel()
-        authInProgress = false
+        cancelAuth()
         super.onDestroy()
     }
 
