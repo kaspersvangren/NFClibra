@@ -25,19 +25,21 @@ object Hub {
     @Volatile var configuredLibrary: String? = null
 
     class TagState(
-        val phone: PhoneTag,
+        /** null = en del, appen melder uden at have læst den ("Gennemfør nu" på et sæt) */
+        val phone: PhoneTag?,
+        val mac: String,
+        val uid: ByteArray,
         var dsfid: Int?,
         var afi: Int?,
         var content: TagContent?,
     ) {
-        val mac get() = phone.mac
         /** Del af et sæt, som samles op (se SetRun): meldes ikke "væk", når den fjernes fra telefonen */
         var inSet = false
 
         fun toJson(): JSONObject = JSONObject().apply {
             put("Trtype", 3)
             put("Dfsid", dsfid ?: 0)
-            put("Id", TagContent.b64(phone.uidMsb))
+            put("Id", TagContent.b64(uid))
             put("Mac", mac)
             put("Content", (content ?: TagContent.empty()).toJson())
         }
@@ -263,7 +265,7 @@ object Hub {
             LogBuf.add("NFC: ${e.message}")
             return
         }
-        val state = TagState(phone, null, null, null)
+        val state = TagState(phone, phone.mac, phone.uidMsb, null, null, null)
         try {
             val info = phone.systemInfo()
             state.dsfid = info.dsfid
@@ -293,7 +295,7 @@ object Hub {
         activeSet?.let { run ->
             if (run.reported && run.alarmValue != null && run.missingAlarm.isNotEmpty()) {
                 // Resten af sættet har stadig forkert alarm – det skal gøres færdigt først
-                state.phone.close()
+                state.phone?.close()
                 LogBuf.add("Ignoreret: ${state.label()} – alarm mangler stadig på ${run.barcode} del ${run.missingText()}")
                 signal(Fb.ERROR, "Gør sættet færdigt", "Alarm mangler: del ${run.missingText()}")
                 return
@@ -328,6 +330,12 @@ object Hub {
         /** Det Cicero bad om (AFI_ON/AFI_OFF), når sættet var meldt */
         var alarmValue: Int? = null
         val missingAlarm = java.util.TreeSet<Int>()
+        /** "Gennemfør nu": meldt uden at alle dele var læst; alarmen skiftes kun på delen ved telefonen */
+        var forced = false
+        /** Dele, der aldrig blev læst, men meldt alligevel */
+        val virtual = java.util.TreeSet<Int>()
+        /** Dele, hvor alarmen bevidst ikke blev skiftet */
+        val skipped = java.util.TreeSet<Int>()
         var touched = SystemClock.elapsedRealtime()
         fun missingParts() = (1..total).filter { it !in parts }
         fun missingText() = missingAlarm.joinToString(", ")
@@ -339,6 +347,9 @@ object Hub {
     class SetView(
         val barcode: String, val total: Int, val phase: Int,
         val read: Set<Int>, val alarmDone: Set<Int>, val here: Int?, val alarmOn: Boolean,
+        val virtual: Set<Int> = emptySet(), val skipped: Set<Int> = emptySet(),
+        /** Dele, hvor alarmen endnu ikke er skiftet (kun i ALARM-fasen) */
+        val missing: Set<Int> = emptySet(),
     ) {
         companion object { const val COLLECT = 0; const val WAIT = 1; const val ALARM = 2; const val DONE = 3 }
     }
@@ -356,10 +367,47 @@ object Hub {
             }
             val here = current?.takeIf { it.inSet }?.content?.takeIf { it.barcode == r.barcode }?.seqNum
             val alarmDone = if (r.alarmValue == null) emptySet() else
-                (1..r.total).filter { it in r.parts && it !in r.missingAlarm }.toSet()
-            SetView(r.barcode, r.total, phase, r.parts.keys.toSet(), alarmDone, here, r.alarmValue == AFI_ON)
+                (1..r.total).filter { it in r.parts && it !in r.missingAlarm && it !in r.virtual && it !in r.skipped }.toSet()
+            SetView(
+                r.barcode, r.total, phase, r.parts.keys.filter { it !in r.virtual }.toSet(), alarmDone, here,
+                r.alarmValue == AFI_ON, r.virtual.toSet(), r.skipped.toSet(), r.missingAlarm.toSet(),
+            )
         }
         statusListener?.invoke()
+    }
+
+    /** "Gennemfør nu": meld sættet til Cicero med de dele, der er læst – de andre meldes uden at være læst */
+    fun forceSet() = exec.execute {
+        val run = activeSet ?: return@execute
+        if (run.reported) return@execute
+        val sample = run.parts.values.firstOrNull()?.content ?: return@execute
+        val missing = run.missingParts()
+        for (seq in missing) {
+            // Opdigtet chip-id (E0 = ISO 15693), entydigt pr. materiale og del
+            val h = (run.barcode.hashCode().toLong() and 0xFFFFFFFFL)
+            val uid = byteArrayOf(
+                0xE0.toByte(), 0xFF.toByte(), (h shr 24).toByte(), (h shr 16).toByte(),
+                (h shr 8).toByte(), h.toByte(), 0x5E, seq.toByte(),
+            )
+            val mac = uid.joinToString(":") { "%02X".format(it.toInt() and 0xFF) }
+            val content = TagContent(seq, run.total, run.barcode, null, sample.country, sample.library)
+            run.parts[seq] = TagState(null, mac, uid, 0, null, content).also { it.inSet = true }
+            run.virtual.add(seq)
+        }
+        run.forced = true
+        LogBuf.add("Gennemfør nu: ${run.barcode} med ${run.total - missing.size} af ${run.total} dele" +
+            (if (missing.isEmpty()) "" else " – del ${missing.joinToString(", ")} ikke læst"))
+        reportSet(run)
+    }
+
+    /** "Spring resten over" i alarmfasen: alarmen skiftes ikke på de dele, der mangler */
+    fun skipRestOfSet() = exec.execute {
+        val run = activeSet ?: return@execute
+        if (run.alarmValue == null || run.missingAlarm.isEmpty()) return@execute
+        LogBuf.add("Sprunget over: alarm ikke skiftet på ${run.barcode} del ${run.missingText()}")
+        run.skipped.addAll(run.missingAlarm)
+        run.missingAlarm.clear()
+        alarmDone(run)
     }
 
     /** Afbryd/Luk/Stop i pop-op'en */
@@ -382,7 +430,7 @@ object Hub {
         var run = activeSet
         if (run != null && (run.barcode != c.barcode || run.total != c.numItems)) {
             if (run.reported && run.alarmValue != null && run.missingAlarm.isNotEmpty()) {
-                state.phone.close()
+                state.phone?.close()
                 current = null
                 LogBuf.add("Ignoreret: ${state.label()} – alarm mangler stadig på ${run.barcode} del ${run.missingText()}")
                 signal(Fb.ERROR, "Gør sættet færdigt", "Alarm mangler: del ${run.missingText()}")
@@ -400,7 +448,7 @@ object Hub {
         LogBuf.add("Læst: ${state.label()} · alarm ${afiText(state.afi)}")
 
         if (!run.reported) {
-            run.parts[c.seqNum]?.let { old -> if (old !== state) old.phone.close() }
+            run.parts[c.seqNum]?.let { old -> if (old !== state) old.phone?.close() }
             run.parts[c.seqNum] = state
             val missing = run.missingParts()
             if (missing.isNotEmpty()) {
@@ -413,7 +461,7 @@ object Hub {
         }
 
         // Sættet er meldt til Cicero: delen ved telefonen erstatter den gamle (lukkede) forbindelse
-        run.parts[c.seqNum]?.let { old -> inventory.remove(old.mac); if (old !== state) old.phone.close() }
+        run.parts[c.seqNum]?.let { old -> inventory.remove(old.mac); if (old !== state) old.phone?.close() }
         run.parts[c.seqNum] = state
         inventory[state.mac] = state
         val want = run.alarmValue
@@ -444,7 +492,8 @@ object Hub {
     }
 
     private fun setAfi(s: TagState, value: Int): Boolean = try {
-        s.phone.writeAfi(value)
+        val ph = s.phone ?: throw IllegalStateException("delen er ikke læst")
+        ph.writeAfi(value)
         s.afi = value
         count("WriteAFISucc")
         true
@@ -461,10 +510,13 @@ object Hub {
         run.alarmValue = value
         run.touched = SystemClock.elapsedRealtime()
         run.missingAlarm.clear()
+        run.skipped.clear()
         for ((seq, s) in run.parts) {
+            if (seq in run.virtual) continue
             if (s.afi == value) continue
-            if (s === current && setAfi(s, value)) { LogBuf.add("${alarmWord(value)}: ${s.label()}"); continue }
-            run.missingAlarm.add(seq)
+            if (s === current && s.phone != null && setAfi(s, value)) { LogBuf.add("${alarmWord(value)}: ${s.label()}"); continue }
+            // Gennemført i app'en: resten springes over (brugeren har sagt ja til det)
+            if (run.forced) run.skipped.add(seq) else run.missingAlarm.add(seq)
         }
         if (run.missingAlarm.isEmpty()) {
             alarmDone(run)
@@ -487,16 +539,26 @@ object Hub {
     private fun alarmDone(run: SetRun) {
         val on = run.alarmValue == AFI_ON
         val word = if (on) "TIL" else "FRA"
-        LogBuf.add("Alarm $word: ${run.barcode} – alle ${run.total} dele")
-        val detail = "${run.barcode} – alle ${run.total} dele"
+        val partial = run.virtual.isNotEmpty() || run.skipped.isNotEmpty()
+        val detail = if (!partial) {
+            LogBuf.add("Alarm $word: ${run.barcode} – alle ${run.total} dele")
+            "${run.barcode} – alle ${run.total} dele"
+        } else {
+            val notes = buildList {
+                if (run.skipped.isNotEmpty()) add("ikke skiftet: del ${run.skipped.joinToString(", ")}")
+                if (run.virtual.isNotEmpty()) add("ikke læst: del ${run.virtual.joinToString(", ")}")
+            }.joinToString(" · ")
+            LogBuf.add("Alarm $word: ${run.barcode} – $notes")
+            "${run.barcode} – $notes"
+        }
         if (on) signal(Fb.ALARM_ON, "Alarm til", detail) else signal(Fb.ALARM_OFF, "Alarm fra", detail)
         finishSet(null, done = true)
-        // Pop-op'en viser "færdig" i 2 sekunder; derefter tilbage til "Klar"
+        // Pop-op'en viser resultatet et øjeblik (længere, hvis noget er sprunget over); derefter "Klar"
         val seq = feedbackSeq
         exec.schedule(Runnable {
             if (activeSet == null) publishSet(null)
             if (feedbackSeq == seq) signal(Fb.IDLE, "")
-        }, 2000, TimeUnit.MILLISECONDS)
+        }, if (partial) 5000 else 2000, TimeUnit.MILLISECONDS)
     }
 
     /** Sættet er færdigt eller opgivet: Cicero får "væk" for delene, og alt glemmes */
@@ -515,7 +577,7 @@ object Hub {
         }
         for (s in run.parts.values) {
             if (run.reported && inventory.remove(s.mac) != null) Server.broadcast("removeTag", s.toJson().toString())
-            if (s !== current) s.phone.close()
+            if (s !== current) s.phone?.close()
         }
     }
 
@@ -550,7 +612,7 @@ object Hub {
     fun onLocked() {
         exec.execute {
             finishSet("app'en blev låst")
-            current?.let { if (it.inSet) { it.phone.close(); current = null } }
+            current?.let { if (it.inSet) { it.phone?.close(); current = null } }
             for (s in inventory.values.toList()) drop(s, "app'en blev låst")
         }
         for (l in onLockListeners) try { l() } catch (_: Exception) {}
@@ -584,7 +646,7 @@ object Hub {
         checkSetTimeout()
         val s = current ?: return
         try {
-            s.phone.ping()
+            s.phone?.ping() ?: throw IllegalStateException("ingen chip")
             pingFails = 0
         } catch (_: Exception) {
             pingFails++
@@ -596,13 +658,13 @@ object Hub {
         if (s.inSet) {
             // Del af et sæt: Cicero skal stadig tro, at den ligger der, indtil sættet er færdigt
             if (current === s) current = null
-            s.phone.close()
+            s.phone?.close()
             activeSet?.let { publishSet(it) }
             return
         }
         inventory.remove(s.mac)
         if (current === s) current = null
-        s.phone.close()
+        s.phone?.close()
         Server.broadcast("removeTag", s.toJson().toString())
         LogBuf.add("Væk: ${s.label()} ($why)")
         if (feedback != Fb.ERROR) signal(Fb.IDLE, "")
@@ -654,7 +716,7 @@ object Hub {
         }
         for (s in inventory.values) {
             try {
-                s.phone.writeAfi(value)
+                (s.phone ?: throw IllegalStateException("ingen chip")).writeAfi(value)
                 s.afi = value
                 count("WriteAFISucc")
             } catch (e: Exception) {
@@ -720,8 +782,9 @@ object Hub {
         val country = s.content?.country?.takeIf { it.isNotEmpty() } ?: DEFAULT_COUNTRY
         val bytes = TagContent.build(barcode, numItems, seqNum, country, library)
         try {
-            s.phone.writeBlocks(bytes)
-            val check = TagContent.parse(s.phone.readBlocks(0, 8))
+            val ph = s.phone ?: throw IllegalStateException("ingen chip")
+            ph.writeBlocks(bytes)
+            val check = TagContent.parse(ph.readBlocks(0, 8))
             if (check.barcode != barcode) throw IllegalStateException("kontrol-læsning viste '${check.barcode}'")
             s.content = check
             count("WriteTagSucc")

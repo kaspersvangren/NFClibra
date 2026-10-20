@@ -53,7 +53,11 @@ Telefonen læser én chip ad gangen, men Cicero vil se alle dele af et sæt på 
 telefonen, mens Cicero lytter, viser app'en en pop op med en cirkel for hver del og samler delene op én ad gangen.
 De meldes først til Cicero, når alle er læst – som når hele sættet ligger på skrankens læser. Skifter Cicero så
 alarmen, skiftes den med det samme på delen ved telefonen, og cirklerne viser, hvilke dele der mangler (grøn =
-alarm fra, orange = alarm til). Pop op'en lukker af sig selv, når sættet er færdigt. Andre materialer ignoreres, indtil sættet er færdigt. Bliver et sæt ikke gjort færdigt
+alarm fra, orange = alarm til). Pop op'en lukker af sig selv, når sættet er færdigt.
+
+**Gennemfør nu** (så snart én del er læst) melder hele sættet til Cicero, også dele der ikke er læst – fx når en del mangler, har en
+defekt chip, eller det er rent administrativt. Alarmen skiftes så kun på delen ved telefonen. I alarmfasen kan resten
+springes over med **Spring resten over**. Begge spørger først, og loggen skriver, hvilke dele der ikke blev læst eller skiftet. Andre materialer ignoreres, indtil sættet er færdigt. Bliver et sæt ikke gjort færdigt
 (1 minut uden ny del, 2 minutter for alarmen), opgives det, og loggen siger hvilke dele der mangler.
 
 ## Værktøj til tags (knappen nederst i menuen ⚙)

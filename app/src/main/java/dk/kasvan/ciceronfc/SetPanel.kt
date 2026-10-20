@@ -2,6 +2,7 @@ package dk.kasvan.ciceronfc
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
@@ -23,6 +24,9 @@ import kotlin.math.min
  */
 class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
     var onStop: (() -> Unit)? = null
+    var onForce: (() -> Unit)? = null
+    var onSkip: (() -> Unit)? = null
+    private var phase = -1
 
     private var cardColor = Color.WHITE
     private var textColor = Color.BLACK
@@ -38,11 +42,26 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
     private val sub = text(14f).apply { gravity = Gravity.CENTER }
     private val parts = PartsView()
     private val stopBg = GradientDrawable().apply { cornerRadius = dp(20).toFloat() }
-    private val stop = text(15f).apply {
+    private val forceBg = GradientDrawable().apply { cornerRadius = dp(20).toFloat() }
+    private fun button(bg: GradientDrawable) = text(15f).apply {
         gravity = Gravity.CENTER
-        setPadding(dp(22), dp(8), dp(22), dp(8))
-        background = stopBg
-        setOnClickListener { onStop?.invoke() }
+        setPadding(dp(20), dp(8), dp(20), dp(8))
+        background = bg
+    }
+    /** Venstre knap: Afbryd (samler) · Luk (venter) · Spring resten over (alarm) */
+    private val stop = button(stopBg).apply {
+        setOnClickListener { if (phase == Hub.SetView.ALARM) onSkip?.invoke() else onStop?.invoke() }
+    }
+    /** Højre knap, kun mens delene samles */
+    private val force = button(forceBg).apply {
+        text = "Gennemfør nu"
+        setOnClickListener { onForce?.invoke() }
+    }
+    private val buttons = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        addView(stop)
+        addView(force, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10) })
     }
 
     private fun text(size: Float, bold: Boolean = false) = TextView(ctx).apply {
@@ -69,8 +88,8 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
             })
             addView(msg)
             addView(sub, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
-            addView(stop, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(14)
+            addView(buttons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(14)
             })
         }
         addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
@@ -83,13 +102,17 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
         this.blue = blue; this.green = green; this.orange = orange
         cardBg.setColor(card)
         stopBg.setColor(button)
+        forceBg.setColor(blue)
+        force.setTextColor(Color.WHITE)
         title.setTextColor(text); msg.setTextColor(text); stop.setTextColor(text)
         code.setTextColor(sub); this.sub.setTextColor(sub)
         parts.invalidate()
     }
 
     fun update(v: Hub.SetView?) {
-        if (v == null) { view.visibility = View.GONE; return }
+        if (v == null) { view.visibility = View.GONE; phase = -1; return }
+        phase = v.phase
+        force.visibility = if (v.phase == Hub.SetView.COLLECT) View.VISIBLE else View.GONE
         val alarmColor = if (v.alarmOn) orange else green
         val alarmWord = if (v.alarmOn) "Alarm til" else "Alarm fra"
         code.text = v.barcode
@@ -109,16 +132,26 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
             Hub.SetView.ALARM -> {
                 title.text = alarmWord; title.setTextColor(alarmColor)
                 msg.text = "${v.alarmDone.size} af ${v.total} klaret"
-                sub.text = "Hold ${partList((1..v.total).filter { it !in v.alarmDone })} mod telefonen"
-                stop.text = "Stop"; stop.visibility = View.VISIBLE
+                sub.text = "Hold ${partList(v.missing.toList())} mod telefonen"
+                stop.text = "Spring resten over"; stop.visibility = View.VISIBLE
             }
             else -> {
                 title.text = alarmWord; title.setTextColor(alarmColor)
-                msg.text = "$alarmWord på alle ${v.total} dele"
-                sub.text = ""
+                if (v.virtual.isEmpty() && v.skipped.isEmpty()) {
+                    msg.text = "$alarmWord på alle ${v.total} dele"
+                    sub.text = ""
+                } else {
+                    msg.text = if (v.virtual.isNotEmpty()) "Gennemført med ${v.total - v.virtual.size} af ${v.total} dele"
+                        else "$alarmWord på ${v.alarmDone.size} af ${v.total} dele"
+                    sub.text = listOfNotNull(
+                        v.skipped.takeIf { it.isNotEmpty() }?.let { "Ikke skiftet: ${partList(it.toList())}" },
+                        v.virtual.takeIf { it.isNotEmpty() }?.let { "Ikke læst: ${partList(it.toList())}" },
+                    ).joinToString(" · ")
+                }
                 stop.visibility = View.GONE
             }
         }
+        buttons.visibility = if (stop.visibility == View.VISIBLE || force.visibility == View.VISIBLE) View.VISIBLE else View.GONE
         sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
         parts.state = v
         parts.requestLayout()
@@ -126,7 +159,7 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
         view.visibility = View.VISIBLE
     }
 
-    private fun partList(l: List<Int>): String = when (l.size) {
+    fun partList(l: List<Int>): String = when (l.size) {
         0 -> "delene"
         1 -> "del ${l[0]}"
         else -> "del " + l.dropLast(1).joinToString(", ") + " og " + l.last()
@@ -196,7 +229,10 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
                 } else {
                     stroke.color = subColor
                     stroke.strokeWidth = dp(2).toFloat()
+                    // Stiplet = meldt uden at være læst ("Gennemfør nu")
+                    stroke.pathEffect = if (i in v.virtual) DashPathEffect(floatArrayOf(dp(4).toFloat(), dp(4).toFloat()), 0f) else null
                     c.drawCircle(cx, cy, r - dp(1), stroke)
+                    stroke.pathEffect = null
                     num.color = subColor
                     c.drawText(i.toString(), cx, cy - (num.descent() + num.ascent()) / 2f, num)
                 }

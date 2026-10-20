@@ -376,7 +376,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             }
             setBig(prefs().getBoolean(PREF_PIN_BIG, false))
         }
-        setPanel = SetPanel(this, ::dp).apply { onStop = { Hub.stopSet() } }
+        setPanel = SetPanel(this, ::dp).apply {
+            onStop = { Hub.stopSet() }
+            onForce = { confirmForceSet() }
+            onSkip = { confirmSkipSet() }
+        }
         container = FrameLayout(this).apply {
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             // Sæt i flere dele: over Cicero, men under låsen
@@ -451,6 +455,35 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     // Menu og dialoger ligger i egne vinduer over låseskærmen – de lukkes, når app'en låser
     private var openMenu: PopupWindow? = null
     private val dialogs = ArrayList<AlertDialog>()
+
+    /** "Gennemfør nu" i sæt-pop-op'en: spring de ulæste dele over – kun efter et "Er du sikker?" */
+    private fun confirmForceSet() {
+        val v = Hub.setView ?: return
+        val missing = (1..v.total).filter { it !in v.read }
+        if (missing.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Er du sikker?")
+            .setMessage(
+                "${setPanel.partList(missing).replaceFirstChar { it.uppercase() }} er ikke læst. Cicero får besked om hele sættet, " +
+                    "og alarmen skiftes kun på delen ved telefonen – ikke på de andre dele.",
+            )
+            .setPositiveButton("Gennemfør") { _, _ -> Hub.forceSet() }
+            .setNegativeButton("Annuller", null)
+            .track()
+    }
+
+    /** "Spring resten over" i alarmfasen – kun efter et "Er du sikker?" */
+    private fun confirmSkipSet() {
+        val v = Hub.setView ?: return
+        if (v.missing.isEmpty()) return
+        val word = if (v.alarmOn) "til" else "fra"
+        AlertDialog.Builder(this)
+            .setTitle("Er du sikker?")
+            .setMessage("Alarmen bliver ikke slået $word på ${setPanel.partList(v.missing.toList())}.")
+            .setPositiveButton("Spring over") { _, _ -> Hub.skipRestOfSet() }
+            .setNegativeButton("Annuller", null)
+            .track()
+    }
 
     private fun AlertDialog.Builder.track(): AlertDialog {
         dialogs.removeAll { !it.isShowing }

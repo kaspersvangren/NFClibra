@@ -591,7 +591,7 @@ class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val what = when {
             i.blank -> "tom chip"
             c == null -> "chip uden dansk datamodel"
-            else -> "${c.barcode.ifEmpty { "(intet nummer)" }} · del ${c.seqNum} af ${c.numItems} · ${c.library.ifEmpty { "intet bibliotek" }}"
+            else -> "${c.barcode.ifEmpty { "(intet nummer)" }} · del ${c.seqNum} af ${c.numItems} · ${if (c.library.isEmpty()) "intet bibliotek" else "${c.country}-${c.library}"}"
         }
         LogBuf.add("Værktøj læst: $what · alarm ${Hub.afiText(i.afi)}")
     }
