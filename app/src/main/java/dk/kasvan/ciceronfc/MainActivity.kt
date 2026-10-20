@@ -464,8 +464,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         AlertDialog.Builder(this)
             .setTitle("Er du sikker?")
             .setMessage(
-                "${setPanel.partList(missing).replaceFirstChar { it.uppercase() }} er ikke læst. Cicero får besked om hele sættet, " +
-                    "og alarmen skiftes kun på delen ved telefonen – ikke på de andre dele.",
+                "${setPanel.partList(missing).replaceFirstChar { it.uppercase() }} er ikke læst. Gennemfør alligevel?",
             )
             .setPositiveButton("Gennemfør") { _, _ -> Hub.forceSet() }
             .setNegativeButton("Annuller", null)
