@@ -8,6 +8,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -26,7 +29,19 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
     var onStop: (() -> Unit)? = null
     var onForce: (() -> Unit)? = null
     var onSkip: (() -> Unit)? = null
+    var onDismiss: (() -> Unit)? = null
     private var phase = -1
+    private var closeAt = 0L
+    private val handler = Handler(Looper.getMainLooper())
+    /** Nedtælling på knappen, når sættet er færdigt: "OK (5)" … "OK (1)" */
+    private val tick = object : Runnable {
+        override fun run() {
+            if (phase != Hub.SetView.DONE) return
+            val left = ((closeAt - SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
+            stop.text = "OK ($left)"
+            if (left > 0) handler.postDelayed(this, 250)
+        }
+    }
 
     private var cardColor = Color.WHITE
     private var textColor = Color.BLACK
@@ -50,7 +65,13 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
     }
     /** Venstre knap: Afbryd (samler) · Luk (venter) · Spring resten over (alarm) */
     private val stop = button(stopBg).apply {
-        setOnClickListener { if (phase == Hub.SetView.ALARM) onSkip?.invoke() else onStop?.invoke() }
+        setOnClickListener {
+            when (phase) {
+                Hub.SetView.ALARM -> onSkip?.invoke()
+                Hub.SetView.DONE -> onDismiss?.invoke()
+                else -> onStop?.invoke()
+            }
+        }
     }
     /** Højre knap, kun mens delene samles */
     private val force = button(forceBg).apply {
@@ -73,6 +94,8 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
         setBackgroundColor(Color.argb(115, 0, 0, 0))
         visibility = View.GONE
         isClickable = true // Cicero bagved må ikke reagere på tryk, mens sættet er i gang
+        // Færdig: et tryk hvor som helst lukker pop-op'en
+        setOnClickListener { if (phase == Hub.SetView.DONE) onDismiss?.invoke() }
         val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = cardBg
@@ -110,8 +133,10 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
     }
 
     fun update(v: Hub.SetView?) {
+        handler.removeCallbacks(tick)
         if (v == null) { view.visibility = View.GONE; phase = -1; return }
         phase = v.phase
+        closeAt = v.closeAt
         force.visibility = if (v.phase == Hub.SetView.COLLECT) View.VISIBLE else View.GONE
         val alarmColor = if (v.alarmOn) orange else green
         val alarmWord = if (v.alarmOn) "Alarm til" else "Alarm fra"
@@ -148,7 +173,8 @@ class SetPanel(private val ctx: Context, private val dp: (Int) -> Int) {
                         v.virtual.takeIf { it.isNotEmpty() }?.let { "Ikke læst: ${partList(it.toList())}" },
                     ).joinToString(" · ")
                 }
-                stop.visibility = View.GONE
+                stop.visibility = View.VISIBLE
+                tick.run()
             }
         }
         buttons.visibility = if (stop.visibility == View.VISIBLE || force.visibility == View.VISIBLE) View.VISIBLE else View.GONE

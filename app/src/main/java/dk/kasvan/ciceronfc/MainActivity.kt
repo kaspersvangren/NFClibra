@@ -380,6 +380,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             onStop = { Hub.stopSet() }
             onForce = { confirmForceSet() }
             onSkip = { confirmSkipSet() }
+            onDismiss = { Hub.dismissSet() }
         }
         container = FrameLayout(this).apply {
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))

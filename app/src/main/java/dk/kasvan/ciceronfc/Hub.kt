@@ -350,6 +350,8 @@ object Hub {
         val virtual: Set<Int> = emptySet(), val skipped: Set<Int> = emptySet(),
         /** Dele, hvor alarmen endnu ikke er skiftet (kun i ALARM-fasen) */
         val missing: Set<Int> = emptySet(),
+        /** DONE: hvornår pop-op'en lukker af sig selv (SystemClock.elapsedRealtime) */
+        val closeAt: Long = 0,
     ) {
         companion object { const val COLLECT = 0; const val WAIT = 1; const val ALARM = 2; const val DONE = 3 }
     }
@@ -357,7 +359,7 @@ object Hub {
     @Volatile var setView: SetView? = null
         private set
 
-    private fun publishSet(run: SetRun?, done: Boolean = false) {
+    private fun publishSet(run: SetRun?, done: Boolean = false, closeAt: Long = 0) {
         setView = run?.let { r ->
             val phase = when {
                 done -> SetView.DONE
@@ -370,7 +372,7 @@ object Hub {
                 (1..r.total).filter { it in r.parts && it !in r.missingAlarm && it !in r.virtual && it !in r.skipped }.toSet()
             SetView(
                 r.barcode, r.total, phase, r.parts.keys.filter { it !in r.virtual }.toSet(), alarmDone, here,
-                r.alarmValue == AFI_ON, r.virtual.toSet(), r.skipped.toSet(), r.missingAlarm.toSet(),
+                r.alarmValue == AFI_ON, r.virtual.toSet(), r.skipped.toSet(), r.missingAlarm.toSet(), closeAt,
             )
         }
         statusListener?.invoke()
@@ -552,21 +554,34 @@ object Hub {
             "${run.barcode} – $notes"
         }
         if (on) signal(Fb.ALARM_ON, "Alarm til", detail) else signal(Fb.ALARM_OFF, "Alarm fra", detail)
-        finishSet(null, done = true)
-        // Pop-op'en viser resultatet et øjeblik (længere, hvis noget er sprunget over); derefter "Klar"
+        // Pop-op'en viser resultatet et øjeblik (længere, hvis noget er sprunget over) med nedtælling; derefter "Klar"
+        val delay = if (partial) 5000L else 2000L
+        val closeAt = SystemClock.elapsedRealtime() + delay
+        finishSet(null, done = true, closeAt = closeAt)
         val seq = feedbackSeq
-        exec.schedule(Runnable {
-            if (activeSet == null) publishSet(null)
-            if (feedbackSeq == seq) signal(Fb.IDLE, "")
-        }, if (partial) 5000 else 2000, TimeUnit.MILLISECONDS)
+        exec.schedule(Runnable { closeDoneSet(seq, closeAt) }, delay, TimeUnit.MILLISECONDS)
+    }
+
+    /** Luk netop denne færdige pop-op (ikke en nyere) og gå tilbage til "Klar", hvis intet andet er sket */
+    private fun closeDoneSet(seq: Int, closeAt: Long) {
+        val v = setView
+        if (activeSet == null && v != null && v.phase == SetView.DONE && v.closeAt == closeAt) publishSet(null)
+        if (feedbackSeq == seq) signal(Fb.IDLE, "")
+    }
+
+    /** Tryk på pop-op'en, når sættet er færdigt: luk den med det samme */
+    fun dismissSet() = exec.execute {
+        val v = setView ?: return@execute
+        if (activeSet != null || v.phase != SetView.DONE) return@execute
+        closeDoneSet(feedbackSeq, v.closeAt)
     }
 
     /** Sættet er færdigt eller opgivet: Cicero får "væk" for delene, og alt glemmes */
-    private fun finishSet(why: String?, done: Boolean = false) {
+    private fun finishSet(why: String?, done: Boolean = false, closeAt: Long = 0) {
         val run = activeSet ?: return
         activeSet = null
         // Færdig: pop-op'en viser det kort (lukkes af alarmDone); ellers forsvinder den med det samme
-        publishSet(if (done) run else null, done)
+        publishSet(if (done) run else null, done, closeAt)
         if (why != null) {
             when {
                 !run.reported -> LogBuf.add("Sæt afbrudt ($why): ${run.barcode} – del ${run.missingParts().joinToString(", ")} blev ikke læst; Cicero har intet fået")
