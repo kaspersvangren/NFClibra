@@ -38,11 +38,33 @@ jobs:
           fi
           echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
 
+      - name: Versionsnumre
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # To numre pr. version:
+          #  - internt: v0.1.<byggenummer> – fortløbende; det er det, ældre app-versioner sammenligner
+          #  - officielt: fx 0.2.0 – står i app'en, i ændringslisten og som udgivelsens titel
+          # Det officielle tages fra "- **Næste version 0.2.0** –" i CHANGELOG.md; står der kun
+          # "- **Næste version** –" (eller ingenting), tælles sidste tal op fra forrige udgivelse
+          RUN=${{ github.run_number }}
+          WANT=$(grep -m1 -E '^- \*\*Næste version' CHANGELOG.md | sed -nE 's/^- \*\*Næste version ([0-9]+\.[0-9]+\.[0-9]+)\*\*.*/\1/p' || true)
+          if [ -z "$WANT" ]; then
+            LAST=$(gh release view --repo "${{ github.repository }}" --json name -q .name 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' || true)
+            [ -z "$LAST" ] && LAST="0.1.$((RUN - 1))"
+            IFS=. read -r A B C <<< "$LAST"
+            WANT="$A.$B.$((C + 1))"
+          fi
+          echo "Officielt nummer $WANT, internt v0.1.$RUN"
+          echo "VERSION_NAME=$WANT" >> "$GITHUB_ENV"
+          echo "TAG=v0.1.$RUN" >> "$GITHUB_ENV"
+
       - name: Ændringsliste ind i app'en
         shell: bash
         run: |
-          # "Næste version" i CHANGELOG.md får det rigtige versionsnummer
-          sed -i "s/^- \*\*Næste version\*\*/- **0.1.${{ github.run_number }}**/" CHANGELOG.md
+          # "Næste version" i CHANGELOG.md får det officielle nummer og byggenummeret i parentes
+          sed -i -E "0,/^- \*\*Næste version[^*]*\*\*/s//- **${VERSION_NAME}** (${{ github.run_number }})/" CHANGELOG.md
           mkdir -p app/src/main/assets
           cp CHANGELOG.md app/src/main/assets/CHANGELOG.md
 
@@ -50,7 +72,6 @@ jobs:
         shell: bash
         env:
           VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: 0.1.${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           set -o pipefail
@@ -71,17 +92,17 @@ jobs:
           # Samme fil under det gamle navn, så gamle links og ældre versioner af app'en stadig kan opdatere
           cp NFClibra.apk CiceroNFC.apk
           # Udgivelsens tekst er versionens linje i CHANGELOG.md – ellers commit-beskeden
-          grep -m1 "^- \*\*0\.1\.${{ github.run_number }}\*\* – " CHANGELOG.md | sed 's/^- \*\*[^*]*\*\* – //' > notes.txt || true
+          grep -m1 -F -- "- **${VERSION_NAME}** (${{ github.run_number }}) – " CHANGELOG.md | sed 's/^- \*\*[^*]*\*\* ([0-9]*) – //' > notes.txt || true
           if [ ! -s notes.txt ]; then
             git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session|Signed-off-by):' > notes.txt
           fi
           printf '\nBygget fra %s\nByggenummer %s\n' "${GITHUB_SHA::7}" "${{ github.run_number }}" >> notes.txt
           # Lille versionsfil, som app'en tjekker (tæller ikke med i GitHubs grænse for API-opslag)
           # "code" er løbenummeret, som app'en sammenligner med (versionsnummeret kan så følges frit)
-          jq -n --arg tag "v0.1.${{ github.run_number }}" --rawfile notes notes.txt --argjson code ${{ github.run_number }} \
-            '{tag: $tag, apk: "NFClibra.apk", notes: $notes, code: $code}' > version.json
-          gh release create "v0.1.${{ github.run_number }}" NFClibra.apk CiceroNFC.apk version.json \
-            --title "NFClibra 0.1.${{ github.run_number }}" \
+          jq -n --arg tag "$TAG" --arg name "$VERSION_NAME" --rawfile notes notes.txt --argjson code ${{ github.run_number }} \
+            '{tag: $tag, name: $name, apk: "NFClibra.apk", notes: $notes, code: $code}' > version.json
+          gh release create "$TAG" NFClibra.apk CiceroNFC.apk version.json \
+            --title "NFClibra $VERSION_NAME" \
             --notes-file notes.txt --latest
 
       - name: Skriv versionsnummeret ind i CHANGELOG.md
@@ -91,7 +112,7 @@ jobs:
           git config user.email "build-bot@users.noreply.github.com"
           if ! git diff --quiet -- CHANGELOG.md; then
             git add CHANGELOG.md
-            git commit -qm "CHANGELOG: version 0.1.${{ github.run_number }}"
+            git commit -qm "CHANGELOG: version ${VERSION_NAME} (${{ github.run_number }})"
             git push -q origin HEAD:main || echo "Kunne ikke skrive versionsnummeret tilbage (main er ændret imens)"
           fi
 

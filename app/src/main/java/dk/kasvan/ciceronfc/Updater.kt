@@ -64,7 +64,7 @@ object Updater {
         thread(isDaemon = true, name = "update-check") {
             var error: String? = null
             try {
-                val (tag, u, rawNotes, fileCode) = try {
+                val (tag, u, rawNotes, fileCode, shownName) = try {
                     fromVersionFile()
                 } catch (e: Exception) {
                     LogBuf.add("Versionsfil ikke hentet (${e.message}) – spørger GitHub")
@@ -82,7 +82,7 @@ object Updater {
                 val notes = rawNotes.lines()
                     .filterNot { it.startsWith("Bygget fra") || it.startsWith("Byggenummer") }
                     .joinToString("\n").trim().take(600)
-                available = if (code > currentCode(app)) Info(tag.removePrefix("v"), u, notes) else null
+                available = if (code > currentCode(app)) Info(shownName ?: tag.removePrefix("v"), u, notes) else null
                 available?.let { LogBuf.add("Ny version fundet: ${it.name}") }
             } catch (e: Exception) {
                 error = e.message ?: "ukendt fejl"
@@ -108,7 +108,8 @@ object Updater {
     }
 
     /** Version, app-fil og ændringer fra versionsfilen */
-    private data class Release(val tag: String, val url: String, val notes: String, val code: Long?)
+    // tag: det interne nummer (v0.1.<byggenummer>), som også ældre app-versioner forstår; name: det officielle nummer
+    private data class Release(val tag: String, val url: String, val notes: String, val code: Long?, val name: String?)
 
     private fun fromVersionFile(): Release {
         val j = JSONObject(get(VERSION_FILE, json = false))
@@ -116,7 +117,8 @@ object Updater {
         val apk = j.getString("apk")
         if (apk !in APK_NAMES || !Regex("""^v\d+\.\d+\.\d+$""").matches(tag)) throw IOException("ugyldig versionsfil")
         val code = if (j.has("code")) j.getLong("code") else null
-        return Release(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""), code)
+        val name = j.optString("name", "").takeIf { Regex("""^\d+\.\d+\.\d+$""").matches(it) }
+        return Release(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""), code, name)
     }
 
     /** Det samme fra GitHubs API (reserve) */
@@ -129,7 +131,8 @@ object Updater {
             val name = a.getString("name")
             if (name in APK_NAMES && (url.isEmpty() || name == "NFClibra.apk")) url = a.getString("browser_download_url")
         }
-        return Release(j.getString("tag_name"), url, j.optString("body", ""), null)
+        val name = Regex("""(\d+\.\d+\.\d+)$""").find(j.optString("name", ""))?.groupValues?.get(1)
+        return Release(j.getString("tag_name"), url, j.optString("body", ""), null, name)
     }
 
     /** Hent den nye version og bed Android installere den. Android spørger brugeren først. */
