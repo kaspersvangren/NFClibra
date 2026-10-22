@@ -123,6 +123,28 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (loadIssues.size >= 25 || !loadIssues.add(key)) return
         LogBuf.add(text)
     }
+    // Fejlsøgning: kan siden bruge browserens lager? (én gang pr. værtsnavn; der skrives ingen cookies)
+    private val probedHosts = HashSet<String>()
+    private fun probeStorage(host: String?) {
+        if (host == null || !probedHosts.add(host) || !::web.isInitialized) return
+        val js = """
+            (function () {
+              function t(name, f) { try { return name + " " + f(); } catch (e) { return name + " FEJL " + (e && e.name) + ": " + String(e && e.message).replace(/\d+/g, "#").slice(0, 90); } }
+              return [
+                t("localStorage", function () { localStorage.setItem("__cnfc_probe", "1"); var ok = localStorage.getItem("__cnfc_probe") === "1"; localStorage.removeItem("__cnfc_probe"); return ok ? "ok" : "skrives ikke"; }),
+                t("sessionStorage", function () { sessionStorage.setItem("__cnfc_probe", "1"); sessionStorage.removeItem("__cnfc_probe"); return "ok"; }),
+                t("indexedDB", function () { if (typeof indexedDB === "undefined") return "mangler"; var r = indexedDB.open("__cnfc_probe"); r.onsuccess = function () { r.result.close(); indexedDB.deleteDatabase("__cnfc_probe"); }; return "ok"; }),
+                t("cookies", function () { void document.cookie; return navigator.cookieEnabled ? "ok" : "slået fra"; }),
+                t("serviceWorker", function () { return ("serviceWorker" in navigator) ? "findes" : "mangler"; })
+              ].join(" · ");
+            })()
+        """.trimIndent()
+        web.evaluateJavascript(js) { r ->
+            val text = r?.trim('"')?.replace("\\\"", "\"") ?: "intet svar"
+            LogBuf.add("Lager ($host): $text")
+        }
+    }
+
     private var loadStartedAt = 0L
     private val slowLoadCheck = Runnable {
         LogBuf.add("Siden er ikke færdig efter 15 sek. (indlæst ${progress.progress} %)")
@@ -248,6 +270,16 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 "pinkode-tastatur: ${if (prefs().getBoolean(PREF_PIN_PAD, true)) "til" else "fra"}" +
                 (if (prefs().getBoolean(PREF_PIN_FLIP, false)) ", vendt" else "") +
                 (if (prefs().getBoolean(PREF_PIN_BIG, false)) ", stor" else ""),
+        )
+        val cm = CookieManager.getInstance()
+        val um = getSystemService(android.os.UserManager::class.java)
+        val dpm = getSystemService(android.app.admin.DevicePolicyManager::class.java)
+        val admin = dpm?.activeAdmins?.isNotEmpty() == true
+        val workProfile = Build.VERSION.SDK_INT >= 30 && um?.isManagedProfile == true
+        LogBuf.add(
+            "Cookies: ${if (cm.acceptCookie()) "til" else "FRA"} · " +
+                "enhedsadministrator: ${if (admin) "ja" else "nej"}" +
+                (if (workProfile) " · arbejdsprofil" else ""),
         )
     }
 
@@ -1622,6 +1654,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     loadStartedAt = 0L
                     LogBuf.add("Side indlæst på ${"%.1f".format(ms / 1000.0)} sek. (${Uri.parse(url).host})")
                 }
+                probeStorage(Uri.parse(url).host)
                 onPageChanged(url, loading = false)
                 // Én gang efter login: er Ciceros RFID-opsætning (Enhedsindstillinger) sat til NFClibra?
                 if (!scannerChecked && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
@@ -1678,8 +1711,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 // Scriptfejl i Cicero: kun fejltypen (fx "Uncaught SyntaxError") og hvor – ikke selve beskeden
                 else if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR && msg.startsWith("Uncaught")) {
                     val type = msg.substringBefore(':').filter { it.isLetter() || it == ' ' }.take(40)
-                    val src = Uri.parse(m.sourceId() ?: "").host ?: "?"
-                    logLoadIssue("c:$type:$src", "Scriptfejl i Cicero: $type ($src, linje ${m.lineNumber()})")
+                    val src = Uri.parse(m.sourceId() ?: "").let { it.host ?: it.scheme ?: "?" }
+                    // Sikkerhedsfejl er browserens egne faste tekster (fx "Access is denied for this document");
+                    // tal og adresseparametre fjernes alligevel, så der ikke kan følge lånerdata med
+                    val detail = if (type.contains("SecurityError"))
+                        ": " + scrub(msg.substringAfter(':').trim()).replace(Regex("\\d+"), "#").take(160)
+                    else ""
+                    logLoadIssue("c:$type:$src", "Scriptfejl i Cicero: $type ($src, linje ${m.lineNumber()})$detail")
                 }
                 return true
             }
