@@ -2570,13 +2570,15 @@ private val FLYIN_SWIPE_JS = """
   function labelOf(b) {
     return [b.getAttribute('aria-label'), b.getAttribute('title'), b.getAttribute('mattooltip')].join(' ').toLowerCase();
   }
-  // Et kryds: teksten/ikonet hedder "close", eller etiketten siger luk/close (2). En knap kun med et ikon tæller
-  // også (1), men kun helt oppe i panelets hjørne – se flyAt
-  function closeScore(b) {
+  // Kun et rigtigt kryds: teksten/ikonet hedder "close" (fx close_darkmode), eller etiketten siger luk/close.
+  // (Knapper med andre ikoner – fx i Ciceros bundmenu – tæller ikke.)
+  function isClose(b) {
     var t = H.textOf(b).toLowerCase();
-    if (t === 'close' || t === '×' || t === '✕' || /\b(luk|close)\b/.test(labelOf(b)) || /\bclose\b/.test(iconName(b))) return 2;
-    return t === '' && b.querySelector('svg, mat-icon') ? 1 : 0;
+    return t === 'close' || t === '×' || t === '✕' || /(^|[^a-zæøå])(luk|close)([^a-zæøå]|${'$'})/.test(labelOf(b)) ||
+      /(^|[\s_-])close([\s_-]|${'$'})/.test(iconName(b));
   }
+  // Synlig på skærmen (offsetParent duer ikke til faste paneler)
+  function shown(el) { if (!el.isConnected) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
   function sheetOf(el) {
     for (var e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
       var s = getComputedStyle(e);
@@ -2598,8 +2600,7 @@ private val FLYIN_SWIPE_JS = """
     for (var i = 0; i < bs.length; i++) {
       var b = bs[i];
       if (!H.visible(b) || (b.closest && b.closest('[data-cnfc], [data-cnfc-bar]'))) continue;
-      var score = closeScore(b);
-      if (!score) continue;
+      if (!isClose(b)) continue;
       var br = b.getBoundingClientRect();
       if (br.top > innerHeight * 0.35 || br.left < innerWidth * 0.6) continue;
       var sheet = sheetOf(b);
@@ -2608,8 +2609,7 @@ private val FLYIN_SWIPE_JS = """
       var chip = H.userChip();
       if (chip && sheet.contains(chip)) continue;
       var sr = sheet.getBoundingClientRect();
-      var reach = score === 2 ? 200 : 100;
-      if (br.top - sr.top > reach || sr.right - br.right > reach * 0.6) continue;
+      if (br.top - sr.top > 200 || sr.right - br.right > 120) continue;
       log('Fly-in fundet (' + describe(sheet) + ', kryds: ' + (iconName(b) || labelOf(b).trim() || 'ikon') + ')');
       return { sheet: sheet, close: b };
     }
@@ -2682,7 +2682,7 @@ private val FLYIN_SWIPE_JS = """
       log('Fly-in lukket med swipe');
       if (s.close.isConnected) s.close.click();
       // Lukkede den ikke (fx Cicero spørger først), glider den tilbage
-      setTimeout(function () { if (s.sheet.isConnected && H.visible(s.sheet)) snapBack(s); }, 600);
+      setTimeout(function () { if (shown(s.sheet)) snapBack(s); }, 600);
     } else {
       snapBack(s);
     }
