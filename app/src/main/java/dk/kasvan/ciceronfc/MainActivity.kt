@@ -1692,6 +1692,31 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 }
             }
 
+            // Certifikatfejl: forbindelsen afvises altid (som før) – men nu skrives hvorfor, og hvem der har
+            // udstedt certifikatet, så det kan ses, om telefonens liste over godkendte udstedere er for gammel
+            override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                handler.cancel()
+                val h = Uri.parse(error.url ?: "").host ?: "?"
+                val why = when (error.primaryError) {
+                    android.net.http.SslError.SSL_UNTRUSTED -> "udsteder ikke godkendt af telefonen"
+                    android.net.http.SslError.SSL_EXPIRED -> "certifikatet er udløbet"
+                    android.net.http.SslError.SSL_NOTYETVALID -> "certifikatet er ikke gyldigt endnu (telefonens dato?)"
+                    android.net.http.SslError.SSL_DATE_INVALID -> "ugyldig dato (telefonens dato?)"
+                    android.net.http.SslError.SSL_IDMISMATCH -> "navnet passer ikke"
+                    android.net.http.SslError.SSL_INVALID -> "ugyldigt certifikat"
+                    else -> "fejl ${error.primaryError}"
+                }
+                val c = error.certificate
+                val fmt = java.text.SimpleDateFormat("d. MMM yyyy", java.util.Locale("da"))
+                val issuer = listOfNotNull(c?.issuedBy?.cName, c?.issuedBy?.oName).filter { it.isNotBlank() }.joinToString(", ")
+                val valid = if (c?.validNotBeforeDate != null && c.validNotAfterDate != null)
+                    " · gyldigt ${fmt.format(c.validNotBeforeDate)} – ${fmt.format(c.validNotAfterDate)}" else ""
+                logLoadIssue(
+                    "ssl:$h:${error.primaryError}",
+                    "Certifikatfejl ($h): $why · udstedt af: ${issuer.ifEmpty { "?" }}$valid · telefonens dato: ${fmt.format(java.util.Date())}",
+                )
+            }
+
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
                 val h = request.url.host ?: "?"
                 if (h in Hub.LOCAL_HOSTS) return // vores egen server logger selv
