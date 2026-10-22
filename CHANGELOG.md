@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Fejlsøgning: afviser telefonen Ciceros sikkerhedscertifikat, skriver loggen nu hvorfor, hvem der har udstedt det, og telefonens dato. Forbindelsen afvises stadig som før.
+- **0.1.94** – Fejlsøgning: afviser telefonen Ciceros sikkerhedscertifikat, skriver loggen nu hvorfor, hvem der har udstedt det, og telefonens dato. Forbindelsen afvises stadig som før.
 - **0.1.93** – Mere fejlsøgning, når Cicero ikke kommer frem: ved en sikkerhedsfejl skrives browserens fejltekst (uden tal), og ved første indlæsning testes, om siden må bruge browserens lager (lokalt lager, sessionslager, database, cookies). Opstartslinjen viser, om cookies er slået til, og om telefonen har en enhedsadministrator (fx kommunens styring).
 - **0.1.92** – Fejlsøgning, når Cicero ikke kommer frem: loggen viser nu, hvor lang tid siden er om at blive indlæst (og hvis den ikke er færdig efter 15 sekunder), og hvilke af Ciceros filer der ikke kunne hentes, eller som gav en fejlkode – kun værtsnavn og fejl, aldrig adresser eller lånerdata. Scriptfejl i Cicero logges med fejltype og linje, men uden beskeden.
 - **0.1.91** – "Gennemfør nu" spørger kortere: kun hvilke dele der ikke er læst. Når et sæt er færdigt, tæller pop op'en ned ("OK (5)"), og et tryk lukker den med det samme.
