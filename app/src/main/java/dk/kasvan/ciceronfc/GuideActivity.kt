@@ -619,8 +619,9 @@ class GuideActivity : LockedScreen() {
             pad
         },
         Page(
-            "Faner kan swipes",
-            "Fanerækken øverst i Cicero kan swipes. I stedet for at trykke på pilene skubber du bare fanerne til siden med fingeren.",
+            "Faner og fly-ins kan swipes",
+            "Fanerækken øverst i Cicero kan swipes: skub fanerne til siden med fingeren i stedet for at trykke på pilene. " +
+                "Og en post, der glider ind fra højre, swipes bare væk mod højre i stedet for at trykke på krydset.",
         ) {
             val strip = stillScroll(horizontal = true)
             val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -655,22 +656,66 @@ class GuideActivity : LockedScreen() {
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.fg) }
                 alpha = 0f
             }
+            // En post, der glider ind fra højre (med kryds) – og swipes ud igen
+            val fly = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(tc.tile, 12)
+                elevation = dpf(6f)
+                addView(LinearLayout(this@GuideActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setBackgroundColor(Color.parseColor("#1F4E79"))
+                    setPadding(dp(14), dp(14), dp(14), dp(14))
+                    addView(text("Politikens visuelle guide", 14f, Color.WHITE, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(text("✕", 18f, Color.WHITE))
+                })
+                addView(LinearLayout(this@GuideActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(4), dp(16), dp(16))
+                    addView(line(180)); addView(line(220)); addView(line(140))
+                })
+            }
             val box = FrameLayout(this).apply {
                 addView(screen)
+                addView(fly, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 addView(finger, FrameLayout.LayoutParams(dp(34), dp(34)).apply { leftMargin = dp(200); topMargin = dp(8) })
                 layoutParams = FrameLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT)
             }
+            fly.visibility = View.INVISIBLE
             val dist = dp(160)
             loop(2600) { n ->
-                // Fingeren lægges på, skubber fanerne, og løftes igen
-                val toLeft = n % 2 == 0
-                finger.translationX = if (toLeft) 0f else -dist.toFloat()
-                finger.animate().alpha(0.35f).setStartDelay(0).setDuration(150).withEndAction {
-                    finger.animate().translationX(if (toLeft) -dist.toFloat() else 0f).setStartDelay(0).setDuration(800).withEndAction {
-                        finger.animate().alpha(0f).setStartDelay(0).setDuration(200).start()
-                    }.start()
-                    glide(strip, horizontal = true, to = if (toLeft) dist else 0, ms = 800)
-                }.start()
+                val w = box.width.toFloat().takeIf { it > 0f } ?: dp(280).toFloat()
+                when (n % 4) {
+                    0, 1 -> {
+                        // Fingeren lægges på, skubber fanerne, og løftes igen
+                        val toLeft = n % 4 == 0
+                        finger.translationY = 0f
+                        finger.translationX = if (toLeft) 0f else -dist.toFloat()
+                        finger.animate().alpha(0.35f).setStartDelay(0).setDuration(150).withEndAction {
+                            finger.animate().translationX(if (toLeft) -dist.toFloat() else 0f).setStartDelay(0).setDuration(800).withEndAction {
+                                finger.animate().alpha(0f).setStartDelay(0).setDuration(200).start()
+                            }.start()
+                            glide(strip, horizontal = true, to = if (toLeft) dist else 0, ms = 800)
+                        }.start()
+                    }
+                    2 -> {
+                        // Posten glider ind fra højre
+                        fly.translationX = w
+                        fly.visibility = View.VISIBLE
+                        fly.animate().translationX(0f).setStartDelay(300).setDuration(450).start()
+                    }
+                    else -> {
+                        // Fingeren swiper den ud mod højre
+                        finger.translationX = -dp(150).toFloat()
+                        finger.translationY = dp(90).toFloat()
+                        finger.animate().alpha(0.35f).setStartDelay(0).setDuration(150).withEndAction {
+                            finger.animate().translationX(dp(40).toFloat()).setStartDelay(0).setDuration(650).withEndAction {
+                                finger.animate().alpha(0f).setStartDelay(0).setDuration(200).start()
+                            }.start()
+                            fly.animate().translationX(w).setStartDelay(0).setDuration(650).withEndAction { fly.visibility = View.INVISIBLE }.start()
+                        }.start()
+                    }
+                }
             }
             box
         },
@@ -769,7 +814,7 @@ class GuideActivity : LockedScreen() {
             fun row(t: String, sw: Switch) = hrow(text(t, 14f).apply { layoutParams = LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT) }, sw.view).apply {
                 setPadding(0, dp(6), 0, dp(6))
             }
-            val names = listOf("Swipe-faner", "Pinkode-kontakt i Udlån", "Nulstil/Søg-pille", "Tastatur til Låner m.fl.", "Tags-knap i bjælken")
+            val names = listOf("Swipe-faner", "Pinkode-kontakt i Udlån", "Nulstil/Søg-pille", "Tastatur til Låner m.fl.", "Tags-knap i bjælken", "Swipe fly-in væk")
             val sws = names.map { Switch(true) }
             val c = card(
                 text("Indstillinger", 17f, tc.fg, true).apply { setPadding(0, 0, 0, dp(4)) },
@@ -780,10 +825,10 @@ class GuideActivity : LockedScreen() {
             c.addView(text("Slå alle fra", 13f, tc.blue, true).apply { setPadding(0, dp(8), 0, 0) })
             // Kontakterne slås fra én ad gangen – og til igen
             loop(450) { n ->
-                val k = n % 14
+                val k = n % 16
                 when {
-                    k < 5 -> sws[k].set(false)
-                    k in 7..11 -> sws[k - 7].set(true)
+                    k < 6 -> sws[k].set(false)
+                    k in 8..13 -> sws[k - 8].set(true)
                 }
             }
             c
