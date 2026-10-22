@@ -64,19 +64,23 @@ object Updater {
         thread(isDaemon = true, name = "update-check") {
             var error: String? = null
             try {
-                val (tag, u, rawNotes) = try {
+                val (tag, u, rawNotes, fileCode) = try {
                     fromVersionFile()
                 } catch (e: Exception) {
                     LogBuf.add("Versionsfil ikke hentet (${e.message}) – spørger GitHub")
                     fromApi()
                 }
-                val code = Regex("""^v\d+\.\d+\.(\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
+                // Løbenummeret (det Android sammenligner): fra versionsfilen, ellers linjen "Byggenummer N" i
+                // udgivelsens tekst, ellers sidste tal i versionsnummeret (sådan var det til og med 0.1.x)
+                val code = fileCode
+                    ?: Regex("""Byggenummer (\d+)""").find(rawNotes)?.groupValues?.get(1)?.toLongOrNull()
+                    ?: Regex("""^v\d+\.\d+\.(\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
                     ?: throw IOException("ukendt versionsnummer $tag")
                 // GitHub skelner ikke mellem store og små bogstaver i projektnavnet
                 if (DOWNLOAD_PREFIXES.none { u.startsWith(it, ignoreCase = true) } || APK_NAMES.none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
                 // Kort ændringsliste fra udgivelsen (uden byggelinjen), højst 600 tegn
                 val notes = rawNotes.lines()
-                    .filterNot { it.startsWith("Bygget fra") }
+                    .filterNot { it.startsWith("Bygget fra") || it.startsWith("Byggenummer") }
                     .joinToString("\n").trim().take(600)
                 available = if (code > currentCode(app)) Info(tag.removePrefix("v"), u, notes) else null
                 available?.let { LogBuf.add("Ny version fundet: ${it.name}") }
@@ -104,16 +108,19 @@ object Updater {
     }
 
     /** Version, app-fil og ændringer fra versionsfilen */
-    private fun fromVersionFile(): Triple<String, String, String> {
+    private data class Release(val tag: String, val url: String, val notes: String, val code: Long?)
+
+    private fun fromVersionFile(): Release {
         val j = JSONObject(get(VERSION_FILE, json = false))
         val tag = j.getString("tag")
         val apk = j.getString("apk")
         if (apk !in APK_NAMES || !Regex("""^v\d+\.\d+\.\d+$""").matches(tag)) throw IOException("ugyldig versionsfil")
-        return Triple(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""))
+        val code = if (j.has("code")) j.getLong("code") else null
+        return Release(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""), code)
     }
 
     /** Det samme fra GitHubs API (reserve) */
-    private fun fromApi(): Triple<String, String, String> {
+    private fun fromApi(): Release {
         val j = JSONObject(get(API, json = true))
         var url = ""
         val assets = j.getJSONArray("assets")
@@ -122,7 +129,7 @@ object Updater {
             val name = a.getString("name")
             if (name in APK_NAMES && (url.isEmpty() || name == "NFClibra.apk")) url = a.getString("browser_download_url")
         }
-        return Triple(j.getString("tag_name"), url, j.optString("body", ""))
+        return Release(j.getString("tag_name"), url, j.optString("body", ""), null)
     }
 
     /** Hent den nye version og bed Android installere den. Android spørger brugeren først. */

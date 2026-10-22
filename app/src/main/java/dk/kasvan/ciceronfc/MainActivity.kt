@@ -952,7 +952,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             if (!themeLogged) { themeLogged = true; LogBuf.add("Tema: $name ($how)") }
             // Skift først, når to målinger i træk er enige – så blinker bjælken ikke ved sideskift
             if (newPal === pal) { pendingTheme = null; return@evaluateJavascript }
-            if (pendingTheme != theme) { pendingTheme = theme; return@evaluateJavascript }
+            if (pendingTheme != theme) {
+                pendingTheme = theme
+                // Mål igen om lidt for at bekræfte (der er ikke længere et løbende tjek)
+                handler.postDelayed({ if (resumed) measureCiceroTheme() }, 700)
+                return@evaluateJavascript
+            }
             pendingTheme = null
             pal = newPal
             prefs().edit().putString("ciceroTheme", theme).apply()
@@ -961,13 +966,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
     }
 
-    private val themeTicker = object : Runnable {
-        override fun run() {
-            if (!resumed) return
-            detectCiceroTheme()
-            handler.postDelayed(this, 3000)
-        }
-    }
+    // Tjekkes én gang, når app'en kommer frem; skift i Cicero opdages derefter med det samme (THEME_WATCH_JS)
+    private val themeTicker = Runnable { if (resumed) detectCiceroTheme() }
 
     /**
      * Menuen (tandhjulet): en liste i Ciceros farver og nederst en knap til Værktøj til tags (adskilt fra listen,
@@ -2611,10 +2611,13 @@ private val SCANNER_CHECK_JS = """
 /** Ciceros indstilling for lys/mørk (DK-…_THEME), fx "LIGHT" eller "DARK" */
 private val THEME_READ_JS = """
 (function () {
-  for (var i = 0; i < localStorage.length; i++) {
-    var k = localStorage.key(i) || '';
-    if (/_THEME${'$'}/.test(k)) return String(localStorage.getItem(k)).slice(0, 30);
-  }
+  // Før Cicero er indlæst (tom side), må lageret ikke læses – så er der bare ingen indstilling endnu
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i) || '';
+      if (/_THEME${'$'}/.test(k)) return String(localStorage.getItem(k)).slice(0, 30);
+    }
+  } catch (e) {}
   return null;
 })()
 """

@@ -75,10 +75,11 @@ jobs:
           if [ ! -s notes.txt ]; then
             git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session|Signed-off-by):' > notes.txt
           fi
-          printf '\nBygget fra %s\n' "${GITHUB_SHA::7}" >> notes.txt
+          printf '\nBygget fra %s\nByggenummer %s\n' "${GITHUB_SHA::7}" "${{ github.run_number }}" >> notes.txt
           # Lille versionsfil, som app'en tjekker (tæller ikke med i GitHubs grænse for API-opslag)
-          jq -n --arg tag "v0.1.${{ github.run_number }}" --rawfile notes notes.txt \
-            '{tag: $tag, apk: "NFClibra.apk", notes: $notes}' > version.json
+          # "code" er løbenummeret, som app'en sammenligner med (versionsnummeret kan så følges frit)
+          jq -n --arg tag "v0.1.${{ github.run_number }}" --rawfile notes notes.txt --argjson code ${{ github.run_number }} \
+            '{tag: $tag, apk: "NFClibra.apk", notes: $notes, code: $code}' > version.json
           gh release create "v0.1.${{ github.run_number }}" NFClibra.apk CiceroNFC.apk version.json \
             --title "NFClibra 0.1.${{ github.run_number }}" \
             --notes-file notes.txt --latest
