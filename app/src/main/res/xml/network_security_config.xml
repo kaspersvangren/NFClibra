@@ -6,4 +6,17 @@
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">127.0.0.1</domain>
     </domain-config>
+    <!-- Ciceros certifikat er udstedt under Sectigos nyere rødder (2021), som ældre Android (fx 12) ikke kender.
+         Chrome og nyere Android godkender dem allerede. Kun for systematic.com, og kun i tillæg til telefonens egen liste.
+         R46 sha256 7B:B6:47:A6:2A:EE:AC:88:BF:25:7A:A5:22:D0:1F:FE:A3:95:E0:AB:45:C7:3F:93:F6:56:54:EC:38:F2:5A:06
+         E46 sha256 C9:0F:26:F0:FB:1B:40:18:B2:22:27:51:9B:5C:A2:B5:3E:2C:A5:B3:BE:5C:F1:8E:FE:1B:EF:47:38:0C:53:83
+         (begge kontrolleret mod Mozillas og Debians lister over godkendte rødder) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">systematic.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sectigo_root_r46" />
+            <certificates src="@raw/sectigo_root_e46" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config>

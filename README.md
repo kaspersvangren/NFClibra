@@ -110,6 +110,7 @@ App'en ændrer kun udseendet; Ciceros data og logik røres ikke. Hver tilpasning
 - Andre hjemmesider end Cicero og login åbnes i telefonens browser, ikke i app'en – også ved
   omdirigeringer. Indlejrede rammer fra andre sider blokeres.
 - Ukrypteret forbindelse er kun tilladt til app'ens egen server på telefonen.
+- Ciceros certifikat er udstedt under Sectigos nyere rødder (Root R46/E46 fra 2021), som ældre Android (fx 12) ikke kender. App'en har derfor de to offentlige rødder med – kun for systematic.com og i tillæg til telefonens egen liste. Chrome og nyere Android godkender dem allerede. Afvises et certifikat alligevel, afvises forbindelsen, og loggen skriver hvorfor.
 - Værktøjets kamera genkender tal og stregkoder på selve telefonen (Googles ML Kit via Play-tjenester).
   Billeder gemmes ikke og sendes ikke; Play-tjenester kan sende anonym brugsstatistik om genkendelsen til Google.
 - Webvisningens "Safe Browsing" (som sender adresser til Google) er slået fra; app'en viser kun Cicero og login.
