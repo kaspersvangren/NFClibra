@@ -1438,9 +1438,55 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     /** Holder øje med, om Ciceros pinkode-felt vælges. Slået fra = Cicero opfører sig som før. */
+    /**
+     * App'ens scripts sættes først i gang, når siden har indhold. Cicero tømmer siden et øjeblik, når den
+     * starter; ramte scriptene netop det øjeblik, gik de i stå – og troede bagefter, de allerede kørte.
+     */
+    private var injectGen = 0
+    private fun injectWhenReady(tries: Int = 0, gen: Int = ++injectGen) {
+        if (!::web.isInitialized || gen != injectGen) return
+        web.evaluateJavascript("!!(document.documentElement && document.head && document.body)") { r ->
+            if (gen != injectGen) return@evaluateJavascript
+            when {
+                r == "true" -> injectPageScripts()
+                tries < 40 -> handler.postDelayed({ injectWhenReady(tries + 1, gen) }, 250)
+                else -> LogBuf.add("Siden fik intet indhold inden for 10 sek. – tilpasningerne er ikke sat i gang")
+            }
+        }
+    }
+
+    private fun injectPageScripts() {
+        injectPinWatcher()
+        // Lys/mørk følger Ciceros egen indstilling med det samme
+        runTweak(THEME_WATCH_JS)
+        // Hver tilpasning af Cicero for sig (Indstillinger)
+        if (tweakOn(TW_SWIPE)) runTweak(SWIPE_TABS_JS)
+        if (tweakOn(TW_PIN)) runTweak(PIN_TOGGLE_JS)
+        if (tweakOn(TW_PILL)) runTweak(STICKY_BUTTONS_JS)
+        if (tweakOn(TW_KEYS)) runTweak(LANER_KEYS_JS)
+        if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
+        pushPageColors()
+        handler.postDelayed({ detectCiceroTheme() }, 500)
+    }
+
+    /**
+     * Kører en tilpasning. Går den i stå under opstarten, fjernes dens "jeg kører allerede"-mærke igen
+     * (window.__cnfc…), så den sættes i gang næste gang i stedet for at blive væk.
+     */
+    private fun runTweak(src: String) = runJs(
+        "(function () {\n" +
+            "  var before = {}; for (var k in window) if (k.indexOf('__cnfc') === 0) before[k] = 1;\n" +
+            "  try {\n" + src + "\n  } catch (e) {\n" +
+            "    for (var k2 in window) if (k2.indexOf('__cnfc') === 0 && k2 !== '__cnfc' && !before[k2]) { try { delete window[k2]; } catch (x) {} }\n" +
+            "    throw e;\n" +
+            "  }\n" +
+            "})();",
+        null,
+    )
+
     private fun injectPinWatcher() {
         val on = prefs().getBoolean(PREF_PIN_PAD, true)
-        runJs(PIN_WATCHER_JS.replace("%ON%", on.toString()), null)
+        runTweak(PIN_WATCHER_JS.replace("%ON%", on.toString()))
     }
 
     private fun onPinFieldFocused() {
@@ -1661,17 +1707,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     scannerChecked = true
                     handler.postDelayed({ runScannerCheck() }, 4000)
                 }
-                injectPinWatcher()
-                // Lys/mørk følger Ciceros egen indstilling med det samme
-                runJs(THEME_WATCH_JS, null)
-                // Hver tilpasning af Cicero for sig (Indstillinger)
-                if (tweakOn(TW_SWIPE)) runJs(SWIPE_TABS_JS, null)
-                if (tweakOn(TW_PIN)) runJs(PIN_TOGGLE_JS, null)
-                if (tweakOn(TW_PILL)) runJs(STICKY_BUTTONS_JS, null)
-                if (tweakOn(TW_KEYS)) runJs(LANER_KEYS_JS, null)
-                if (tweakOn(TW_TAGS)) runJs(TAGS_BUTTON_JS, null)
-                pushPageColors()
-                handler.postDelayed({ detectCiceroTheme() }, 500)
+                injectWhenReady()
             }
 
             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
