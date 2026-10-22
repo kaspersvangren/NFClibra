@@ -117,6 +117,17 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var updateAfterPermission = false
     private val blockedHosts = java.util.Collections.synchronizedSet(HashSet<String>())
 
+    // Fejlsøgning af sider, der ikke kommer frem: hver slags fejl skrives kun én gang, og højst 25 i alt
+    private val loadIssues = HashSet<String>()
+    private fun logLoadIssue(key: String, text: String) {
+        if (loadIssues.size >= 25 || !loadIssues.add(key)) return
+        LogBuf.add(text)
+    }
+    private var loadStartedAt = 0L
+    private val slowLoadCheck = Runnable {
+        LogBuf.add("Siden er ikke færdig efter 15 sek. (indlæst ${progress.progress} %)")
+    }
+
     /** Fejl i Ciceros RFID-opsætning (Hostname/Port), opdaget når Cicero prøver at forbinde. */
     private data class SetupError(val text: String, val details: List<String>)
     @Volatile private var setupError: SetupError? = null
@@ -1599,9 +1610,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (pinPad.isShowing) pinPad.hide()
                 staffKeys.hide()
                 onPageChanged(url, loading = true)
+                loadStartedAt = SystemClock.elapsedRealtime()
+                handler.removeCallbacks(slowLoadCheck)
+                handler.postDelayed(slowLoadCheck, 15_000)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                handler.removeCallbacks(slowLoadCheck)
+                if (loadStartedAt > 0) {
+                    val ms = SystemClock.elapsedRealtime() - loadStartedAt
+                    loadStartedAt = 0L
+                    LogBuf.add("Side indlæst på ${"%.1f".format(ms / 1000.0)} sek. (${Uri.parse(url).host})")
+                }
                 onPageChanged(url, loading = false)
                 // Én gang efter login: er Ciceros RFID-opsætning (Enhedsindstillinger) sat til NFClibra?
                 if (!scannerChecked && Uri.parse(url).host?.lowercase() == CICERO_HOST) {
@@ -1632,7 +1652,19 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (!closedEvents && (request.isForMainFrame || url.contains(":${Server.PORT}"))) {
                     // Kun værtsnavnet – fulde adresser kan indeholde lånerdata
                     LogBuf.add("Browser-fejl: ${error.description} (${request.url.host})")
+                } else if (!closedEvents && request.url.host !in Hub.LOCAL_HOSTS) {
+                    // Filer, siden henter (scripts, typografi, data): kun værtsnavn og fejl, aldrig adressen
+                    val h = request.url.host ?: "?"
+                    logLoadIssue("e:$h:${error.description}", "Fil kunne ikke hentes: ${error.description} ($h)")
                 }
+            }
+
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                val h = request.url.host ?: "?"
+                if (h in Hub.LOCAL_HOSTS) return // vores egen server logger selv
+                val code = response.statusCode
+                val what = if (request.isForMainFrame) "Siden" else "Fil"
+                logLoadIssue("h:$h:$code:${request.isForMainFrame}", "$what svarede $code ${response.reasonPhrase ?: ""} ($h)".trimEnd())
             }
         }
         web.webChromeClient = object : WebChromeClient() {
@@ -1643,6 +1675,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                     msg.contains("rfid", ignoreCase = true)
                 // Højst 120 tegn: det er nok til at se forbindelsesfejlen, og lange beskeder kunne rumme andet
                 if (important) LogBuf.add("Cicero-konsol: ${scrub(msg).take(120)}")
+                // Scriptfejl i Cicero: kun fejltypen (fx "Uncaught SyntaxError") og hvor – ikke selve beskeden
+                else if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR && msg.startsWith("Uncaught")) {
+                    val type = msg.substringBefore(':').filter { it.isLetter() || it == ' ' }.take(40)
+                    val src = Uri.parse(m.sourceId() ?: "").host ?: "?"
+                    logLoadIssue("c:$type:$src", "Scriptfejl i Cicero: $type ($src, linje ${m.lineNumber()})")
+                }
                 return true
             }
 
