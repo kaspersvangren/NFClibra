@@ -73,6 +73,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val TW_PILL = "tweakPill"
         const val TW_KEYS = "tweakKeys"
         const val TW_TAGS = "tweakTags"
+        const val TW_FLY = "tweakFlySwipe"
         const val PREF_SOUND = "sound"
         const val PREF_PIN_BIG = "pinPadBig"
     }
@@ -1097,6 +1098,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             TW_PILL to "Nulstil/Søg-pille",
             TW_KEYS to "Tastatur til Låner, telefon og materialenummer",
             TW_TAGS to "Tags-knap i Ciceros bjælke",
+            TW_FLY to "Swipe fly-in væk (mod højre)",
         )
         val switches = tweaks.map { (key, label) ->
             switch(label, tweakOn(key)) { on ->
@@ -1465,6 +1467,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_PILL)) runTweak(STICKY_BUTTONS_JS)
         if (tweakOn(TW_KEYS)) runTweak(LANER_KEYS_JS)
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
+        if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         pushPageColors()
         handler.postDelayed({ detectCiceroTheme() }, 500)
     }
@@ -2548,6 +2551,147 @@ private val RFID_SETUP_JS = """
  * Knappen "Tags" midt i Ciceros egen bjælke (mellem logoet og brugernavnet). Kun der, hvor bjælken
  * findes (hovedskærmene); fly-ins lægger sig over den som over resten af bjælken. Tryk åbner Værktøj til tags.
  */
+/**
+ * Fly-in (fx en post, der glider ind fra højre): swipe mod højre lukker den. Fly-in'en følger fingeren; slippes
+ * den langt nok ude (eller med et svirp), trykkes på Ciceros eget kryds. Swipes, der starter på noget, der selv
+ * ruller sidelæns (faner, brede tabeller), eller i et felt, røres ikke.
+ */
+private val FLYIN_SWIPE_JS = """
+(function () {
+  if (window.__cnfcFly) return;
+  window.__cnfcFly = true;
+  var H = window.__cnfc, said = {};
+  function log(m) { if (said[m]) return; said[m] = 1; try { CiceroNFC.tweak(m); } catch (e) {} }
+  function iconName(b) {
+    var ic = b.querySelector('mat-icon, [data-mat-icon-name], [svgicon], [fonticon]');
+    return ic ? [ic.textContent, ic.getAttribute('data-mat-icon-name'), ic.getAttribute('svgicon'), ic.getAttribute('fonticon')]
+      .join(' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 30) : '';
+  }
+  function labelOf(b) {
+    return [b.getAttribute('aria-label'), b.getAttribute('title'), b.getAttribute('mattooltip')].join(' ').toLowerCase();
+  }
+  // Et kryds: teksten/ikonet hedder "close", eller etiketten siger luk/close (2). En knap kun med et ikon tæller
+  // også (1), men kun helt oppe i panelets hjørne – se flyAt
+  function closeScore(b) {
+    var t = H.textOf(b).toLowerCase();
+    if (t === 'close' || t === '×' || t === '✕' || /\b(luk|close)\b/.test(labelOf(b)) || /\bclose\b/.test(iconName(b))) return 2;
+    return t === '' && b.querySelector('svg, mat-icon') ? 1 : 0;
+  }
+  function sheetOf(el) {
+    for (var e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      var s = getComputedStyle(e);
+      var overlay = e.matches && e.matches('.cdk-overlay-pane, mat-sidenav, mat-drawer, .mat-drawer, .mat-sidenav, [role=dialog]');
+      if (overlay || s.position === 'fixed' || (s.position === 'absolute' && s.zIndex !== 'auto')) {
+        var r = e.getBoundingClientRect();
+        if (r.width >= innerWidth * 0.85 && r.height >= innerHeight * 0.5) return e;
+      }
+    }
+    return null;
+  }
+  function describe(el) {
+    var c = (typeof el.className === 'string' ? el.className : '').trim().split(/\s+/).slice(0, 3).join('.');
+    return el.tagName + (c ? '.' + c : '');
+  }
+  // Fly-in'en, som en berøring er inde i: et stort, svævende panel med et kryds i øverste højre hjørne
+  function flyAt(target) {
+    var bs = document.querySelectorAll('button, [role=button]');
+    for (var i = 0; i < bs.length; i++) {
+      var b = bs[i];
+      if (!H.visible(b) || (b.closest && b.closest('[data-cnfc], [data-cnfc-bar]'))) continue;
+      var score = closeScore(b);
+      if (!score) continue;
+      var br = b.getBoundingClientRect();
+      if (br.top > innerHeight * 0.35 || br.left < innerWidth * 0.6) continue;
+      var sheet = sheetOf(b);
+      if (!sheet || !sheet.contains(target)) continue;
+      // Ciceros hovedside (med bjælken og navnet) er ikke en fly-in
+      var chip = H.userChip();
+      if (chip && sheet.contains(chip)) continue;
+      var sr = sheet.getBoundingClientRect();
+      var reach = score === 2 ? 200 : 100;
+      if (br.top - sr.top > reach || sr.right - br.right > reach * 0.6) continue;
+      log('Fly-in fundet (' + describe(sheet) + ', kryds: ' + (iconName(b) || labelOf(b).trim() || 'ikon') + ')');
+      return { sheet: sheet, close: b };
+    }
+    return null;
+  }
+  function scrollsSideways(el, stop) {
+    for (var e = el; e && e !== stop && e !== document.body; e = e.parentElement) {
+      if (e.scrollWidth > e.clientWidth + 2) {
+        var ox = getComputedStyle(e).overflowX;
+        if (ox === 'auto' || ox === 'scroll') return true;
+      }
+    }
+    return false;
+  }
+  var st = null;
+  function snapBack(s) {
+    s.sheet.style.transition = 'transform .2s ease-out';
+    s.sheet.style.transform = s.prev;
+    setTimeout(function () { s.sheet.style.transition = s.prevTr; }, 220);
+  }
+  addEventListener('touchstart', function (e) {
+    st = null;
+    if (e.touches.length !== 1 || !H.cicero()) return;
+    var tg = e.target, t = e.touches[0];
+    if (tg.closest && tg.closest('input, textarea, select, [contenteditable=true], [data-cnfc], [data-cnfc-bar], .mat-mdc-slider, mat-slider')) return;
+    var f = flyAt(tg);
+    if (!f) { st = { x: t.clientX, y: t.clientY, none: true }; return; }
+    if (scrollsSideways(tg, f.sheet)) return;
+    st = { x: t.clientX, y: t.clientY, sheet: f.sheet, close: f.close, drag: false, dx: 0, lx: t.clientX, lt: Date.now(), v: 0 };
+  }, { passive: true, capture: true });
+  addEventListener('touchmove', function (e) {
+    if (!st || e.touches.length !== 1) return;
+    var t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (st.none) {
+      // Fejlsøgning: swipe mod højre uden en genkendt fly-in – skriv hvilke knapper der står øverst til højre
+      if (dx > 120 && Math.abs(dy) < 40) {
+        var out = [], bs = document.querySelectorAll('button, [role=button]');
+        for (var i = 0; i < bs.length && out.length < 4; i++) {
+          var r = bs[i].getBoundingClientRect();
+          if (H.visible(bs[i]) && r.top < innerHeight * 0.35 && r.left > innerWidth * 0.6) {
+            var s = sheetOf(bs[i]);
+            out.push((iconName(bs[i]) || labelOf(bs[i]).trim() || 'uden navn') + (s ? ' i ' + describe(s) : ' (intet panel)'));
+          }
+        }
+        log('Swipe mod højre, men ingen fly-in genkendt – knapper øverst til højre: ' + (out.join('; ') || 'ingen'));
+        st = null;
+      }
+      return;
+    }
+    if (!st.drag) {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      if (dx > 0 && dx > Math.abs(dy) * 1.5) {
+        st.drag = true;
+        st.prev = st.sheet.style.transform; st.prevTr = st.sheet.style.transition;
+        st.sheet.style.transition = 'none';
+      } else { st = null; return; }
+    }
+    var now = Date.now();
+    if (now > st.lt) { st.v = (t.clientX - st.lx) / (now - st.lt); st.lx = t.clientX; st.lt = now; }
+    st.dx = Math.max(0, dx);
+    st.sheet.style.transform = 'translateX(' + st.dx + 'px)';
+  }, { passive: true, capture: true });
+  function end() {
+    var s = st; st = null;
+    if (!s || !s.drag) return;
+    var w = s.sheet.getBoundingClientRect().width || innerWidth;
+    if (s.dx > w * 0.3 || (s.v > 0.5 && s.dx > 40)) {
+      // Ciceros eget kryds lukker; Cicero animerer selv ud fra, hvor fingeren slap
+      s.sheet.style.transition = s.prevTr;
+      log('Fly-in lukket med swipe');
+      if (s.close.isConnected) s.close.click();
+      // Lukkede den ikke (fx Cicero spørger først), glider den tilbage
+      setTimeout(function () { if (s.sheet.isConnected && H.visible(s.sheet)) snapBack(s); }, 600);
+    } else {
+      snapBack(s);
+    }
+  }
+  addEventListener('touchend', end, { passive: true, capture: true });
+  addEventListener('touchcancel', function () { var s = st; st = null; if (s && s.drag) snapBack(s); }, { passive: true, capture: true });
+})();
+"""
+
 private val TAGS_BUTTON_JS = """
 (function () {
   if (window.__cnfcTags) return;
