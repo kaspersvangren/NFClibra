@@ -79,6 +79,7 @@ Mens værktøjet er åbent, får Cicero ikke besked om tags.
 - Kontakten "Pinkode" ved "Send kvittering" i udlånsbilledet.
 - Knaprækken Nulstil/Søg under søgeformularer ligger altid nederst som en lille pille over bundmenuen. Pillen er en kopi; et tryk på den trykker på Ciceros egen knap.
 - Knappen **Tags** midt i Ciceros bjælke (hovedskærmene) åbner Værktøj til tags.
+- Ciceros kamera-ikon i materialenummer-felterne åbner NFClibras kamera (stregkode og tal) i stedet for Ciceros. Det læste nummer vælges med en knap og tastes ind i feltet.
 - Fly-ins (fx en post, der glider ind fra højre) kan swipes væk mod højre; app'en trykker så på Ciceros eget kryds. Swipes, der starter på faner, brede tabeller eller felter, lukker ikke.
 - Felterne Låner, telefonnumre (Telefon, Mobil, Fastnet, Fax …) og Materialenummer får app'ens eget tastatur med tal, slet og Enter – plus C (Låner), + (telefon) eller kamera (Materialenummer; nummeret læses som stregkode eller tal og tastes ind). Tasterne sendes som almindelige tastetryk. ABC giver telefonens tastatur. Felter med tal-agtige navne, der ikke genkendes, nævnes i loggen (kun navnet).
 

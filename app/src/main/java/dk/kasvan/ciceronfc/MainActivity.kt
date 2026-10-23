@@ -74,6 +74,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val TW_KEYS = "tweakKeys"
         const val TW_TAGS = "tweakTags"
         const val TW_FLY = "tweakFlySwipe"
+        const val TW_CAM = "tweakItemCamera"
         const val PREF_SOUND = "sound"
         const val PREF_PIN_BIG = "pinPadBig"
     }
@@ -1099,6 +1100,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             TW_KEYS to "Tastatur til Låner, telefon og materialenummer",
             TW_TAGS to "Tags-knap i Ciceros bjælke",
             TW_FLY to "Swipe fly-in væk (mod højre)",
+            TW_CAM to "NFClibras kamera i materialenummer-felter",
         )
         val switches = tweaks.map { (key, label) ->
             switch(label, tweakOn(key)) { on ->
@@ -1398,6 +1400,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { staffKeys.hide() }
         }
 
+        /** Ciceros kamera-knap i et materialenummer-felt: NFClibras kamera åbnes i stedet (feltet er valgt i forvejen) */
+        @JavascriptInterface
+        fun scanItem() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread { if (!Hub.locked && tweakOn(TW_CAM)) openItemScanner() }
+        }
+
         /** "Tags"-knappen i Ciceros bjælke */
         @JavascriptInterface
         fun openTool() {
@@ -1468,6 +1477,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_KEYS)) runTweak(LANER_KEYS_JS)
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
+        if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
         pushPageColors()
         handler.postDelayed({ detectCiceroTheme() }, 500)
     }
@@ -1549,6 +1559,16 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    /** Værktøjets kamera til materialenummeret; resultatet tastes ind i feltet (onFieldScanned) */
+    private fun openItemScanner() {
+        openingOwn()
+        @Suppress("DEPRECATION")
+        startActivityForResult(
+            Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
+            scanRequestCode,
+        )
+    }
+
     private fun sendChar(c: Char) {
         when (c) {
             in '0'..'9' -> sendKey(KeyEvent.KEYCODE_0 + (c - '0'))
@@ -1574,14 +1594,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             StaffKeys.Key.Special -> when (staffKeys.mode) {
                 StaffKeys.Mode.LAANER -> sendChar('C')
                 StaffKeys.Mode.PHONE -> sendKey(KeyEvent.KEYCODE_PLUS)
-                StaffKeys.Mode.ITEM -> {
-                    openingOwn()
-                    @Suppress("DEPRECATION")
-                    startActivityForResult(
-                        Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
-                        scanRequestCode,
-                    )
-                }
+                StaffKeys.Mode.ITEM -> openItemScanner()
             }
             StaffKeys.Key.Delete -> sendKey(KeyEvent.KEYCODE_DEL)
             StaffKeys.Key.Enter -> sendKey(KeyEvent.KEYCODE_ENTER)
@@ -2692,6 +2705,48 @@ private val FLYIN_SWIPE_JS = """
 })();
 """
 
+/**
+ * Ciceros kamera-knap i et materialenummer-felt åbner NFClibras kamera (stregkode og tal) i stedet for Ciceros.
+ * Andre kamera-knapper (fx i bundmenuen) røres ikke.
+ */
+private val CAMERA_SWAP_JS = """
+(function () {
+  if (window.__cnfcCam) return;
+  window.__cnfcCam = true;
+  var H = window.__cnfc, said = {};
+  function log(m) { if (said[m]) return; said[m] = 1; try { CiceroNFC.tweak(m); } catch (e) {} }
+  function fieldOf(el) { return el.closest ? el.closest('mat-form-field, .mat-mdc-form-field, .mat-form-field') : null; }
+  function labelOf(ff) { var l = ff.querySelector('mat-label, label'); return l ? l.textContent : ''; }
+  function iconName(b) {
+    var ic = b.matches('mat-icon, [svgicon], [fonticon]') ? b : b.querySelector('mat-icon, [data-mat-icon-name], [svgicon], [fonticon]');
+    return ic ? [ic.textContent, ic.getAttribute('data-mat-icon-name'), ic.getAttribute('svgicon'), ic.getAttribute('fonticon')]
+      .join(' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 30) : '';
+  }
+  function isCamera(b) {
+    var a = [b.getAttribute('aria-label'), b.getAttribute('title'), b.getAttribute('mattooltip')].join(' ').toLowerCase();
+    return /camera|kamera/.test(iconName(b) + ' ' + a);
+  }
+  addEventListener('click', function (e) {
+    if (!H.cicero() || !e.target || !e.target.closest) return;
+    var b = e.target.closest('button, [role=button], mat-icon');
+    if (!b || b.closest('[data-cnfc]') || !isCamera(b)) return;
+    var ff = fieldOf(b);
+    if (!ff) return;
+    var label = labelOf(ff), t = label.toLowerCase().replace(/[^a-zæøå]/g, '');
+    if (!/^materialen(umme)?r/.test(t)) {
+      log('Kamera-knap i feltet "' + label.replace(/\d+/g, '').trim().slice(0, 30) + '" – Ciceros eget kamera bruges');
+      return;
+    }
+    var input = ff.querySelector('input');
+    if (!input) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    window.__cnfcKeysEl = input;
+    log('Ciceros kamera-knap åbner NFClibras kamera (' + (iconName(b) || 'kamera') + ')');
+    try { CiceroNFC.scanItem(); } catch (x) {}
+  }, true);
+})();
+"""
+
 private val TAGS_BUTTON_JS = """
 (function () {
   if (window.__cnfcTags) return;
@@ -2821,7 +2876,11 @@ private val THEME_WATCH_JS = """
 private val KEYS_REFOCUS_JS = """
 (function () {
   var el = window.__cnfcKeysEl;
-  if (el && document.contains(el)) el.focus();
+  if (el && document.contains(el)) {
+    el.focus();
+    // Det læste nummer erstatter det, der stod i feltet
+    try { el.select(); } catch (e) {}
+  }
 })()
 """
 

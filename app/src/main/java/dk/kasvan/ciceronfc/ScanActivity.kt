@@ -103,7 +103,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
         frame.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ -> frameRect = Rect(l, t, r, b) }
         hint = TextView(this).apply {
-            text = "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og på det rigtige nummer nedenfor."
+            text = "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
             textSize = 15f
             setTextColor(sub)
             setPadding(dp(16), dp(10), dp(16), dp(6))
@@ -263,33 +263,85 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 }
             }
                 .sortedWith(compareBy<Candidate> { tier(it) }.thenByDescending { it.barcode }.thenByDescending { it.hits })
-                .take(5)
+                .take(3) // der er plads til tre knapper
         }
+        // Knapperne bygges kun om, når listen ændrer sig – ellers kunne et tryk gå tabt midt i en ombygning
+        val sig = shown.joinToString(";") { it.value + "|" + kindOf(it) }
+        if (sig == lastSig) return
+        lastSig = sig
         list.removeAllViews()
-        val fg = tc.fg
-        val key = tc.key
-        for (c in shown) {
+        if (shown.isEmpty()) {
             list.addView(TextView(this).apply {
-                val kind = when {
-                    isIsbn(c) -> "ISBN"
-                    tier(c) == 2 -> "andet tal"
-                    c.barcode -> "stregkode"
-                    else -> "tal"
-                }
-                text = c.value + "   · " + kind
+                text = "Ingen numre fundet endnu"
+                textSize = 15f
+                setTextColor(tc.sub)
+                setPadding(dp(4), dp(10), dp(4), dp(10))
+            })
+            return
+        }
+        shown.forEachIndexed { i, c ->
+            // Det bedste bud er fyldt blåt; de andre har blå kant
+            val best = i == 0
+            val fg = if (best) Color.WHITE else tc.fg
+            val accent = if (best) Color.WHITE else tc.blue
+            val number = TextView(this).apply {
+                text = c.value
                 textSize = 22f
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 setTextColor(fg)
-                background = GradientDrawable().apply { setColor(key); cornerRadius = dp(12).toFloat() }
+            }
+            val kind = TextView(this).apply {
+                text = kindOf(c)
+                textSize = 12f
+                setTextColor(if (best) Color.argb(220, 255, 255, 255) else tc.sub)
+            }
+            val use = TextView(this).apply {
+                text = "Brug  ✓"
+                textSize = 16f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(accent)
+            }
+            list.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(if (best) tc.blue else tc.card)
+                    if (!best) setStroke(dp(2), tc.blue)
+                    cornerRadius = dp(12).toFloat()
+                }
                 setPadding(dp(16), dp(10), dp(16), dp(10))
+                isClickable = true
+                contentDescription = "Brug ${c.value}"
+                addView(LinearLayout(this@ScanActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(number)
+                    addView(kind)
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(use)
+                setOnTouchListener { v, e ->
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> v.alpha = 0.7f
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> v.alpha = 1f
+                    }
+                    false
+                }
                 setOnClickListener {
                     setResult(RESULT_OK, Intent().putExtra(EXTRA_VALUE, c.value))
                     finish()
                 }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, dp(4), 0, dp(4))
+                setMargins(0, dp(5), 0, dp(5))
             })
         }
+    }
+
+    private var lastSig: String? = null
+
+    private fun kindOf(c: Candidate) = when {
+        isIsbn(c) -> "ISBN"
+        tier(c) == 2 -> "andet tal"
+        c.barcode -> "stregkode"
+        else -> "tal"
     }
 
     // Holder på NFC, mens kameraet er fremme – ellers melder Android "ingen understøttede apps", når bogen er tæt på
