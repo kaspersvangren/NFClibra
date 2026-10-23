@@ -808,6 +808,87 @@ class GuideActivity : LockedScreen() {
             box
         },
         Page(
+            "Tal-tastatur i felterne",
+            "Låner, telefonnumre og Materialenummer får et lille tastatur med tal, slet og Enter. Den ekstra tast er C (Låner), " +
+                "+ (telefon) eller kamera (Materialenummer): kameraet læser nummeret som stregkode eller tal og taster det ind – " +
+                "også i materialesøgningen. ABC giver telefonens eget tastatur.",
+        ) {
+            val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+            val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+            val value = text("", 15f).apply { setPadding(dp(12), dp(11), dp(12), dp(11)) }
+            val field = FrameLayout(this).apply {
+                addView(value.apply { background = rounded(Color.TRANSPARENT, 6, tc.blue) },
+                    FrameLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(7) })
+                addView(text("Materialenummer", 10f, tc.blue).apply { setBackgroundColor(tc.card); setPadding(dp(3), 0, dp(3), 0) },
+                    FrameLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = dp(9) })
+            }
+            val keyBgs = HashMap<String, GradientDrawable>()
+            fun key(label: String, iconRes: Int? = null, weight: Float = 1f): View {
+                val bg = rounded(tc.key, 8)
+                keyBgs[label] = bg
+                val content: View = if (iconRes != null) icon(iconRes, tc.fg, 20) else text(label, if (label.length == 1) 17f else 12f, tc.fg, true)
+                return FrameLayout(this).apply {
+                    background = bg
+                    addView(content, FrameLayout.LayoutParams(if (iconRes != null) dp(20) else WRAP, if (iconRes != null) dp(20) else WRAP, Gravity.CENTER))
+                    layoutParams = LinearLayout.LayoutParams(0, dp(36), weight).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+                }
+            }
+            fun keyRow(vararg ks: View) = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; ks.forEach { addView(it) } }
+            val pad = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(4), dp(8), dp(4), dp(4))
+                addView(keyRow(key("1"), key("2"), key("3"), key("slet", R.drawable.ic_backspace)))
+                addView(keyRow(key("4"), key("5"), key("6"), key("kamera", R.drawable.ic_camera)))
+                addView(keyRow(key("7"), key("8"), key("9"), key("ABC")))
+                addView(keyRow(key("skjul", R.drawable.ic_keyboard_hide), key("0"), key("Enter", weight = 2f)))
+            }
+            // Kameraet: en lille søger med en stregkode, der dukker op og forsvinder
+            val viewer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = rounded(Color.parseColor("#202124"), 10, Color.WHITE)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                listOf(2, 1, 3, 1, 2, 2, 1, 3, 1, 1, 2, 1, 3).forEach { w ->
+                    addView(View(this@GuideActivity).apply { setBackgroundColor(Color.WHITE) },
+                        LinearLayout.LayoutParams(dp(w), dp(34)).apply { marginEnd = dp(2) })
+                }
+                alpha = 0f
+            }
+            val c = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(tc.card, 14)
+                setPadding(dp(12), dp(10), dp(12), dp(8))
+                addView(field, LinearLayout.LayoutParams(MATCH, WRAP))
+                addView(pad, LinearLayout.LayoutParams(MATCH, WRAP))
+            }
+            val box = FrameLayout(this).apply {
+                addView(c)
+                addView(viewer, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
+                layoutParams = FrameLayout.LayoutParams(dp(270), WRAP)
+            }
+            fun flash(label: String) {
+                val bg = keyBgs[label] ?: return
+                bg.setColor(tc.blue)
+                handler.postDelayed({ bg.setColor(tc.key) }, 180)
+            }
+            val number = "4871206282"
+            // Først tastes nummeret – så Enter – så læses det næste med kameraet
+            loop(260) { n ->
+                val k = n % 34
+                when {
+                    k in 1..10 -> { val ch = number[k - 1].toString(); value.text = number.substring(0, k); flash(ch) }
+                    k == 13 -> flash("Enter")
+                    k == 16 -> value.text = ""
+                    k == 18 -> flash("kamera")
+                    k == 19 -> viewer.animate().alpha(1f).setDuration(200).start()
+                    k == 25 -> { viewer.animate().alpha(0f).setDuration(200).start(); value.text = "5123456789" }
+                    k == 28 -> flash("Enter")
+                    k == 33 -> value.text = ""
+                }
+            }
+            box
+        },
+        Page(
             "Kun NFC?",
             "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan hver ændring af Cicero slås til og fra for sig – eller alle på én gang. Slår du dem alle fra, ser Cicero ud præcis som normalt.",
         ) {

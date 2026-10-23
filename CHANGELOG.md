@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Guiden har fået en side om tal-tastaturet i felterne Låner, telefon og Materialenummer – herunder at kameratasten læser materialenummeret som stregkode eller tal, også i materialesøgningen.
 - **0.2.2** (100) – Guiden viser nu også, at fly-ins kan swipes væk (siden om at swipe), og den nye kontakt står med på siden "Kun NFC?".
 - **0.2.1** (99) – Rettet: swipe mod højre kunne skubbe Ciceros hovedside til side og trykke på en knap i bundmenuen, fordi knapper med et ikon blev taget for et kryds. Nu tæller kun et rigtigt kryds ("close"/"luk"). En fly-in, der ikke lukker (fx fordi Cicero spørger først), glider nu altid tilbage.
 - **0.2.0** (98) – Ny tilpasning: fly-ins (fx en post, der glider ind fra højre) kan swipes væk mod højre i stedet for at trykke på krydset. Fly-in'en følger fingeren og lukker, når den slippes langt nok ude eller med et svirp; ellers glider den tilbage. Swipes, der starter på faner, brede tabeller eller felter, lukker ikke. Kan slås fra under Tilpasninger af Cicero. Første version med de nye versionsnumre: det midterste tal stiger ved nye funktioner.
