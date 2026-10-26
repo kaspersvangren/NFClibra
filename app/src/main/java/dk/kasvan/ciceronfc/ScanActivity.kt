@@ -64,7 +64,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     // ---------- CQL-søgning ----------
     private val cqlMode by lazy { intent.getStringExtra(EXTRA_MODE) == MODE_CQL }
     /** En tekstlinje; samme tekst læst lidt forskelligt (fx "på"/"pa") samles under én nøgle */
-    private class Line(val key: String, val firstSeen: Long, var lastSeen: Long, var hits: Int) {
+    private class Line(val key: String, val firstSeen: Long, var lastSeen: Long, var hits: Int, var text: String) {
         val keys = HashSet<String>().apply { add(key) }
         val variants = HashMap<String, Int>()
         /**
@@ -72,10 +72,12 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
          * ved lighed den, der er læst flest gange, og så den med æ/ø/å
          */
         fun best(): String {
+            // Den sammensatte linje, hvis den er længst; ellers den længste udgave, der er læst mindst to gange
             val sure = variants.entries.filter { it.value >= 2 }.ifEmpty { variants.entries.toList() }
-            return sure.maxWithOrNull(
+            val v = sure.maxWithOrNull(
                 compareBy<Map.Entry<String, Int>> { it.key.length }.thenBy { it.value }.thenBy { e -> e.key.count { it in "æøåÆØÅ" } },
             )?.key ?: key
+            return if (text.length > v.length) text else v
         }
     }
     private class Pick(var text: String, var type: String)
@@ -455,11 +457,50 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         if (k.length >= 6 && !t.contains(' ') && k.count { it.isDigit() } * 10 >= k.length * 6) return
         synchronized(lines) {
             // Samme linje læst delvist eller lidt forskelligt samles under én
-            val l = lines[k] ?: lines.values.firstOrNull { similar(it.keys, k) } ?: Line(k, now, now, 0).also { lines[k] = it }
+            // ... eller stykker af en lang linje, der overlapper hinanden ("Yesteryea" + "steryear: en beretn" + …)
+            val l = lines[k] ?: lines.values.firstOrNull { stitch(it.text, t) != null || similar(it.keys, k) }
+                ?: Line(k, now, now, 0, t).also { lines[k] = it }
+            stitch(l.text, t)?.let { l.text = it }
             l.keys += k
             l.lastSeen = now; l.hits++
             l.variants[t] = (l.variants[t] ?: 0) + 1
         }
+    }
+
+    /** Et tegn uden accent og med små bogstaver – samme længde som før, så positioner passer (å → a, ø → o, æ → a) */
+    private fun fold(s: String): String = buildString(s.length) {
+        for (c in s.lowercase()) append(
+            when (c) {
+                'ø' -> 'o'
+                'æ' -> 'a'
+                else -> java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFD).firstOrNull() ?: c
+            },
+        )
+    }
+
+    /** Største overlap, hvor slutningen af a er begyndelsen af b */
+    private fun overlap(a: String, b: String): Int {
+        for (k in minOf(a.length, b.length) downTo 1) if (a.regionMatches(a.length - k, b, 0, k)) return k
+        return 0
+    }
+
+    /**
+     * Sætter to læsninger af samme linje sammen: er den ene indeholdt i den anden, bruges den længste; overlapper
+     * slutningen af den ene med begyndelsen af den anden (mindst 6 tegn og en tredjedel af den korteste), lægges de
+     * sammen. Ellers null (ikke samme linje).
+     */
+    private fun stitch(a: String, b: String): String? {
+        val fa = fold(a)
+        val fb = fold(b)
+        if (fa == fb) return if (b.count { it in "æøåÆØÅ" } > a.count { it in "æøåÆØÅ" }) b else a
+        if (fa.contains(fb)) return a
+        if (fb.contains(fa)) return b
+        val need = maxOf(6, minOf(fa.length, fb.length) / 3)
+        val ab = overlap(fa, fb)
+        if (ab >= need) return a + b.substring(ab)
+        val ba = overlap(fb, fa)
+        if (ba >= need) return b + a.substring(ba)
+        return null
     }
 
     /** Ligner to læsninger hinanden nok til at være samme linje (den ene en del af den anden, eller stort overlap)? */
