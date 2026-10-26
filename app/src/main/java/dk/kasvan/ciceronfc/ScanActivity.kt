@@ -71,13 +71,18 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
          * Den bedste udgave: blandt dem, der er læst mindst to gange, den længste (delvise læsninger er kortere) –
          * ved lighed den, der er læst flest gange, og så den med æ/ø/å
          */
-        fun best(): String {
-            // Den sammensatte linje, hvis den er længst; ellers den længste udgave, der er læst mindst to gange
-            val sure = variants.entries.filter { it.value >= 2 }.ifEmpty { variants.entries.toList() }
-            val v = sure.maxWithOrNull(
-                compareBy<Map.Entry<String, Int>> { it.key.length }.thenBy { it.value }.thenBy { e -> e.key.count { it in "æøåÆØÅ" } },
-            )?.key ?: key
-            return if (text.length > v.length) text else v
+        /**
+         * Den udgave, flest læsninger støtter: en læsning støtter de udgaver, den er en del af (en delvis læsning
+         * støtter hele linjen, og alle stykker støtter den sammensatte). En fejllæsning ("tralktor") støtter ikke den
+         * rigtige ("traktor") og taber derfor, så snart den rigtige er læst oftere. Ved lighed: den længste, så den med æ/ø/å.
+         */
+        fun best(fold: (String) -> String): String {
+            val all = (variants.keys + text).distinct()
+            val folded = all.associateWith(fold)
+            fun score(v: String) = variants.entries.sumOf { (o, n) -> if (folded[v]!!.contains(folded[o]!!)) n else 0 }
+            return all.maxWithOrNull(
+                compareBy<String> { score(it) }.thenBy { it.length }.thenBy { v -> v.count { it in "æøåÆØÅ" } },
+            ) ?: key
         }
     }
     private class Pick(var text: String, var type: String)
@@ -676,7 +681,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         synchronized(lines) {
             lines.values.removeAll { now - it.lastSeen > 3000 }
             lines.values.filter { it.hits >= 3 && pickedKeys.none { k -> similar(it.keys, k) } }
-                .forEach { l -> alive["t:" + l.key] = l.firstSeen to (l.best() to null) }
+                .forEach { l -> alive["t:" + l.key] = l.firstSeen to (l.best(::fold) to null) }
         }
         // Pladser, hvis linje er væk, bliver ledige; nye linjer fylder ledige pladser i den rækkefølge, de blev set
         for (i in slots.indices) { val sid = slots[i]; if (sid != null && !alive.containsKey(sid)) slots[i] = null }
