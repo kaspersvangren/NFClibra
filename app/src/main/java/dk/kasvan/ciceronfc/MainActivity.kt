@@ -3101,14 +3101,19 @@ private val CQL_CAMERA_JS = """
     }
     return null;
   }
-  function make(color) {
-    var b = document.createElement('button');
-    b.type = 'button';
+  function make(ic) {
+    // Samme størrelse, afstand og farve som historik-ikonet ved siden af
+    var cs = ic ? getComputedStyle(ic) : null, r = ic ? ic.getBoundingClientRect() : { width: 24, height: 24 };
+    var w = Math.round(r.width) || 24, h = Math.round(r.height) || 24;
+    var b = document.createElement('span');
+    b.setAttribute('role', 'button');
     b.setAttribute('data-cnfc', 'cqlcam');
     b.setAttribute('aria-label', 'Søg med kamera');
-    b.style.cssText = 'background:none;border:none;padding:4px;margin:0 10px 0 0;cursor:pointer;display:inline-flex;align-items:center;' +
-      'color:' + color + ';-webkit-tap-highlight-color:transparent;vertical-align:middle;';
-    b.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' +
+    b.style.cssText = 'display:' + (cs ? cs.display : 'inline-block') + ';box-sizing:' + (cs ? cs.boxSizing : 'content-box') + ';' +
+      'width:' + w + 'px;height:' + h + 'px;padding:' + (cs ? cs.padding : '0') + ';margin:' + (cs ? cs.margin : '0') + ';' +
+      'margin-right:16px;vertical-align:' + (cs ? cs.verticalAlign : 'middle') + ';cursor:pointer;' +
+      'color:' + (cs ? cs.color : 'currentColor') + ';-webkit-tap-highlight-color:transparent;';
+    b.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" style="display:block">' +
       '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
     b.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -3125,10 +3130,15 @@ private val CQL_CAMERA_JS = """
     // Ved siden af historik-ikonet (eller sidst i feltet, hvis det ikke findes)
     var ic = ff.querySelector('mat-icon');
     var host = ic ? (ic.closest('button, [role=button]') || ic) : null;
-    var color = ic ? getComputedStyle(ic).color : 'currentColor';
-    var b = make(color);
+    var b = make(ic);
     if (host && host.parentElement) host.parentElement.insertBefore(b, host);
     else (ff.querySelector('.mat-mdc-form-field-flex') || ff).appendChild(b);
+    // Står den alligevel skævt i forhold til historik-ikonet, rettes den op
+    if (ic) requestAnimationFrame(function () {
+      var a = ic.getBoundingClientRect(), m = b.getBoundingClientRect();
+      var dy = (a.top + a.height / 2) - (m.top + m.height / 2);
+      if (Math.abs(dy) > 1) b.style.transform = 'translateY(' + Math.round(dy) + 'px)';
+    });
     if (!logged) { logged = true; try { CiceroNFC.tweak('Kamera sat i CQL-feltet'); } catch (x) {} }
   }
   sync();

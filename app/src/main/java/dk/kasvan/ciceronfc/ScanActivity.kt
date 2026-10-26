@@ -55,7 +55,14 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     // ---------- CQL-søgning ----------
     private val cqlMode by lazy { intent.getStringExtra(EXTRA_MODE) == MODE_CQL }
-    private class Line(val text: String, var lastSeen: Long, var hits: Int)
+    /** En tekstlinje; samme tekst læst lidt forskelligt (fx "på"/"pa") samles under én nøgle */
+    private class Line(val key: String, var lastSeen: Long, var hits: Int) {
+        val variants = HashMap<String, Int>()
+        /** Den udgave, der er læst flest gange – ved lighed den med æ/ø/å */
+        fun best(): String = variants.entries.maxWithOrNull(
+            compareBy<Map.Entry<String, Int>> { it.value }.thenBy { e -> e.key.count { it in "æøåÆØÅ" } },
+        )?.key ?: key
+    }
     private class Pick(var text: String, var type: String)
     private val lines = LinkedHashMap<String, Line>()
     private val picks = ArrayList<Pick>()
@@ -159,12 +166,16 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
             fitsSystemWindows = true
-            addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(hint)
             if (cqlMode) {
-                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                // Fast størrelse: kamerabilledet lidt større end rammen, og listen over det, kameraet ser, har fast
+                // plads til fire linjer – så intet hopper, mens listen skifter
+                addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, frameH + dp(70)))
+                addView(hint)
+                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4 * 58)))
                 buildCqlParts(this)
             } else {
+                addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+                addView(hint)
                 addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
             }
             addView(bottom)
@@ -377,11 +388,20 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         if (t.length !in 2..80) return
         // Rene tal klares som numre (faust/materialenummer)
         if (t.replace(Regex("[ -]"), "").all { it.isDigit() }) return
+        val k = normKey(t)
+        if (k.length < 2) return
         synchronized(lines) {
-            val l = lines.getOrPut(t) { Line(t, now, 0) }
+            val l = lines.getOrPut(k) { Line(k, now, 0) }
             l.lastSeen = now; l.hits++
+            l.variants[t] = (l.variants[t] ?: 0) + 1
         }
     }
+
+    /** Sammenligningsnøgle: små bogstaver, uden accenter (å → a) og uden tegn/mellemrum */
+    private fun normKey(t: String): String =
+        java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace("ø", "o").replace("æ", "ae")
+            .filter { it.isLetterOrDigit() }
 
     /** Faust (8-9 cifre) eller materialenummer (jeres længde); andre tal tilbydes ikke som numre */
     private fun numType(v: String): String? {
@@ -474,23 +494,23 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(tc.blue)
             setPadding(dp(16), dp(6), dp(16), dp(2))
-            visibility = View.GONE
+            visibility = View.INVISIBLE
         }
         picksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(12), 0) }
-        picksScroll = android.widget.ScrollView(this).apply { addView(picksBox); visibility = View.GONE }
+        picksScroll = android.widget.ScrollView(this).apply { addView(picksBox); visibility = View.INVISIBLE }
         searchAll = pill("Søg", true) {
             if (picks.isNotEmpty()) finishWith(cqlOfPicks())
-        }.apply { visibility = View.GONE }
+        }.apply { visibility = View.INVISIBLE }
         cqlPreview = TextView(this).apply {
             textSize = 12f
             setTextColor(tc.sub)
             maxLines = 3
             ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(dp(16), dp(4), dp(16), 0)
-            visibility = View.GONE
+            visibility = View.INVISIBLE
         }
         root.addView(pickHeader)
-        root.addView(picksScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)))
+        root.addView(picksScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(cqlPreview)
         root.addView(searchAll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(6), dp(12), 0) })
     }
@@ -500,6 +520,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun showCql() {
         val now = SystemClock.elapsedRealtime()
         val picked = picks.map { it.text }.toSet()
+        val pickedKeys = picks.map { normKey(it.text) }.toSet()
         val nums = synchronized(candidates) {
             candidates.values.removeAll { now - it.lastSeen > 1500 }
             candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it.value) != null && it.value !in picked }
@@ -510,7 +531,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val canText = picks.none { isNumType(it.type) }
         val texts = synchronized(lines) {
             lines.values.removeAll { now - it.lastSeen > 1500 }
-            lines.values.filter { it.hits >= 2 && it.text !in picked }.sortedByDescending { it.hits }.take(4 - nums.size).map { it.text }
+            val sure = lines.values.filter { it.hits >= 2 && it.key !in pickedKeys }
+            // Dubletter: en linje, der kun er et stykke af en anden (fx "itel" af "Titel"), vises ikke
+            sure.filter { l -> sure.none { o -> o !== l && o.key.length > l.key.length && o.key.length - l.key.length <= 3 && o.key.contains(l.key) } }
+                .sortedByDescending { it.hits }.take(4 - nums.size).map { it.best() }
         }
         val sig = nums.joinToString(";") { it + "|" + numType(it) } + "#" + texts.joinToString(";") + "#" + canNum + canText
         if (sig == lastCqlSig) return
@@ -559,11 +583,11 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun rebuildPicks() {
         picksBox.removeAllViews()
         val any = picks.isNotEmpty()
-        pickHeader.visibility = if (any) View.VISIBLE else View.GONE
-        picksScroll.visibility = if (any) View.VISIBLE else View.GONE
-        searchAll.visibility = if (any) View.VISIBLE else View.GONE
+        pickHeader.visibility = if (any) View.VISIBLE else View.INVISIBLE
+        picksScroll.visibility = if (any) View.VISIBLE else View.INVISIBLE
+        searchAll.visibility = if (any) View.VISIBLE else View.INVISIBLE
         searchAll.text = "Søg (" + picks.size + " valgt" + (if (picks.size == 1) "" else "e") + ")"
-        cqlPreview.visibility = if (any) View.VISIBLE else View.GONE
+        cqlPreview.visibility = if (any) View.VISIBLE else View.INVISIBLE
         cqlPreview.text = if (any) cqlOfPicks() else ""
         for (p in picks.toList()) {
             val text = label(p.text).apply { setOnClickListener { editPick(p) } }
