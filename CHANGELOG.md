@@ -1,6 +1,6 @@
 # Ændringer
 
-- **Næste version** – Rettet: Nulstil/Søg-pillen gled ned over bundmenuen, når Ciceros "…"-menu var åben. Forberedelse til en bundmenu, man selv kan indrette: loggen skriver én gang, hvordan Ciceros bundmenu og "…"-menuen er bygget op (kun knappernes navne, adresser og ikoner).
+- **0.3.1** (102) – Rettet: Nulstil/Søg-pillen gled ned over bundmenuen, når Ciceros "…"-menu var åben. Forberedelse til en bundmenu, man selv kan indrette: loggen skriver én gang, hvordan Ciceros bundmenu og "…"-menuen er bygget op (kun knappernes navne, adresser og ikoner).
 - **0.3.0** (101) – Ciceros kamera-ikon i materialenummer-felterne åbner nu NFClibras kamera, som læser både stregkode og tal (kan slås fra under Tilpasninger af Cicero). I kameraet er hvert fundet nummer en tydelig knap med "Brug ✓" – det bedste bud er fyldt blåt og står øverst – og knapperne står stille, så et tryk ikke går tabt. Det læste nummer erstatter det, der stod i feltet. Guiden har fået en side om tal-tastaturet og kameraet.
 - **0.2.2** (100) – Guiden viser nu også, at fly-ins kan swipes væk (siden om at swipe), og den nye kontakt står med på siden "Kun NFC?".
 - **0.2.1** (99) – Rettet: swipe mod højre kunne skubbe Ciceros hovedside til side og trykke på en knap i bundmenuen, fordi knapper med et ikon blev taget for et kryds. Nu tæller kun et rigtigt kryds ("close"/"luk"). En fly-in, der ikke lukker (fx fordi Cicero spørger først), glider nu altid tilbage.
