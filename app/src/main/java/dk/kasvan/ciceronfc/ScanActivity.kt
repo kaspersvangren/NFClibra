@@ -44,7 +44,15 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         const val EXTRA_MODE = "mode"
         const val MODE_CQL = "cql"
         private val TEXT_TYPES = linkedMapOf("free" to "Fritekst", "title" to "Titel", "creator" to "Forfatter", "dk5" to "DK5", "subject" to "Emneord")
-        private val NUM_TYPES = linkedMapOf("faust" to "Faust", "bmn" to "Materialenr.")
+        private val NUM_TYPES = linkedMapOf("faust" to "Faust", "bmn" to "Materialenr.", "isbn" to "ISBN")
+        /** Ord, der aldrig er en søgning, når de står alene: Ciceros feltnavne og materialetyper (sammenligningsnøgler) */
+        private val STOP_WORDS = setOf(
+            "titel", "forfatter", "emne", "emner", "serie", "status", "beholdning", "placering", "placeringer",
+            "faust", "faustnr", "klassifikation", "materialenummer", "materialenr", "udlant", "hjemme", "reserveret",
+            "reservationer", "isbn", "udgivelse", "sprog", "materialetype", "type", "antal", "materialer",
+            "bog", "boger", "lydbog", "ebog", "netlydbog", "billedbog", "tegneserie", "tidsskrift", "avis", "artikel",
+            "film", "dvd", "bluray", "cd", "musik", "node", "noder", "spil", "konsolspil", "braetspil", "kort", "saet",
+        )
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
     }
 
@@ -56,12 +64,19 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     // ---------- CQL-søgning ----------
     private val cqlMode by lazy { intent.getStringExtra(EXTRA_MODE) == MODE_CQL }
     /** En tekstlinje; samme tekst læst lidt forskelligt (fx "på"/"pa") samles under én nøgle */
-    private class Line(val key: String, var lastSeen: Long, var hits: Int) {
+    private class Line(val key: String, val firstSeen: Long, var lastSeen: Long, var hits: Int) {
+        val keys = HashSet<String>().apply { add(key) }
         val variants = HashMap<String, Int>()
-        /** Den udgave, der er læst flest gange – ved lighed den med æ/ø/å */
-        fun best(): String = variants.entries.maxWithOrNull(
-            compareBy<Map.Entry<String, Int>> { it.value }.thenBy { e -> e.key.count { it in "æøåÆØÅ" } },
-        )?.key ?: key
+        /**
+         * Den bedste udgave: blandt dem, der er læst mindst to gange, den længste (delvise læsninger er kortere) –
+         * ved lighed den, der er læst flest gange, og så den med æ/ø/å
+         */
+        fun best(): String {
+            val sure = variants.entries.filter { it.value >= 2 }.ifEmpty { variants.entries.toList() }
+            return sure.maxWithOrNull(
+                compareBy<Map.Entry<String, Int>> { it.key.length }.thenBy { it.value }.thenBy { e -> e.key.count { it in "æøåÆØÅ" } },
+            )?.key ?: key
+        }
     }
     private class Pick(var text: String, var type: String)
     private val lines = LinkedHashMap<String, Line>()
@@ -94,7 +109,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var camBox: FrameLayout
     private val nfc by lazy { NfcAdapter.getDefaultAdapter(this) }
     // Sigte-rammens størrelse på skærmen
-    private val frameW get() = dp(300)
+    private val frameW get() = dp(if (cqlMode) 330 else 300)
     private val frameH get() = dp(if (cqlMode) 110 else 140)
 
     private val barcodes by lazy { BarcodeScanning.getClient() }
@@ -128,7 +143,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
         frame.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ -> frameRect = Rect(l, t, r, b) }
         hint = TextView(this).apply {
-            text = if (cqlMode) "Sigt på én ting ad gangen – titel, forfatter, faust … Tryk ＋ for at gemme en linje, eller Søg nu."
+            text = if (cqlMode) "Sigt på én ting ad gangen – titel, forfatter, faust, ISBN … Tryk ＋ for at gemme en linje, eller Søg nu. Tryk på en gemt linje for at rette eller flette den."
             else "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
             textSize = 15f
             setTextColor(sub)
@@ -157,7 +172,9 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             controller?.enableTorch(torch)
             b.text = if (torch) "Lys fra" else "Lys til"
         })
-        bottom.addView(smallButton("Zoom 1×") { b ->
+        // Til CQL-søgning starter kameraet uden zoom, så der er plads til lange titler
+        zoomed = !cqlMode
+        bottom.addView(smallButton(if (zoomed) "Zoom 1×" else "Zoom 2×") { b ->
             zoomed = !zoomed
             applyZoom()
             b.text = if (zoomed) "Zoom 1×" else "Zoom 2×"
@@ -241,8 +258,12 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val text = r.getValue(texts)
         if (text != null) {
             for (block in text.textBlocks) for (line in block.lines) {
+                if (cqlMode) {
+                    // Kun linjer, der står helt inde i rammen – halve linjer i kanten giver skæve læsninger
+                    if (wholeInFrame(line.boundingBox)) scanLineCql(line, now)
+                    continue
+                }
                 if (!inFrame(line.boundingBox)) continue
-                if (cqlMode) addLine(line.text, now)
                 val isbnLine = line.text.contains("ISBN", ignoreCase = true)
                 for (m in DIGITS.findAll(line.text)) {
                     val v = m.value.filter { it.isDigit() }
@@ -383,18 +404,83 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     // ---------- CQL-søgning ----------
 
+    private fun wholeInFrame(r: Rect?): Boolean {
+        val f = frameRect ?: return false
+        if (r == null) return false
+        val m = dp(8)
+        return r.left >= f.left - m && r.right <= f.right + m && r.top >= f.top - m && r.bottom <= f.bottom + m
+    }
+
+    /**
+     * En linje deles, hvor der er et stort mellemrum mellem to ord (fx "9788711… Bog" i en tabel på en skærm).
+     * Et enkelt tegn, der står langt fra resten, er typisk en tjekboks læst som "O" – det springes over.
+     * Numre (faust, materialenummer, ISBN) tages fra; resten er en tekstlinje.
+     */
+    private fun scanLineCql(line: com.google.mlkit.vision.text.Text.Line, now: Long) {
+        val els = line.elements.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.left }
+        if (els.isEmpty()) return
+        val h = els.map { it.boundingBox!!.height() }.sorted()[els.size / 2].coerceAtLeast(1)
+        val segs = ArrayList<MutableList<com.google.mlkit.vision.text.Text.Element>>()
+        var cur = mutableListOf(els[0])
+        for (i in 1 until els.size) {
+            val gap = els[i].boundingBox!!.left - els[i - 1].boundingBox!!.right
+            if (gap > h * 1.3f) { segs += cur; cur = mutableListOf() }
+            cur += els[i]
+        }
+        segs += cur
+        for (seg in segs) {
+            val t = seg.joinToString(" ") { it.text }.trim()
+            if (seg.size == 1 && t.length == 1) continue
+            val isbnHint = t.contains("ISBN", ignoreCase = true)
+            var rest = t
+            for (m in DIGITS.findAll(t)) {
+                val v = m.value.filter { it.isDigit() }
+                if (v.length in 8..16) {
+                    add(v, false, now, m.value.all { it.isDigit() }, isbnHint)
+                    rest = rest.replace(m.value, " ")
+                }
+            }
+            addLine(rest.replace(Regex("(?i)isbn[:.]?"), " "), now)
+        }
+    }
+
     private fun addLine(raw: String, now: Long) {
-        val t = raw.replace(Regex("\\s+"), " ").trim()
+        val t = raw.replace(Regex("\\s+"), " ").trim().trim(':', ';', ',', '-', '–', '•', '|', '*', '/', ' ')
         if (t.length !in 2..80) return
-        // Rene tal klares som numre (faust/materialenummer)
+        // Rene tal klares som numre (faust/materialenummer/ISBN)
         if (t.replace(Regex("[ -]"), "").all { it.isDigit() }) return
         val k = normKey(t)
-        if (k.length < 2) return
+        if (k.length < 2 || k in STOP_WORDS) return
         synchronized(lines) {
-            val l = lines.getOrPut(k) { Line(k, now, 0) }
+            // Samme linje læst delvist eller lidt forskelligt samles under én
+            val l = lines[k] ?: lines.values.firstOrNull { similar(it.keys, k) } ?: Line(k, now, now, 0).also { lines[k] = it }
+            l.keys += k
             l.lastSeen = now; l.hits++
             l.variants[t] = (l.variants[t] ?: 0) + 1
         }
+    }
+
+    /** Ligner to læsninger hinanden nok til at være samme linje (den ene en del af den anden, eller stort overlap)? */
+    private fun similar(keys: Collection<String>, k: String): Boolean = keys.any { o ->
+        val short = if (o.length <= k.length) o else k
+        val long = if (o.length <= k.length) k else o
+        if (short.length < 4) return@any short == long
+        (long.contains(short) && short.length * 2 >= long.length) || commonRun(short, long) >= maxOf(5, (short.length * 0.7).toInt())
+    }
+
+    /** Længste fælles stykke af to tekster */
+    private fun commonRun(a: String, b: String): Int {
+        var best = 0
+        val prev = IntArray(b.length + 1)
+        val cur = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            for (j in 1..b.length) {
+                cur[j] = if (a[i - 1] == b[j - 1]) prev[j - 1] + 1 else 0
+                if (cur[j] > best) best = cur[j]
+            }
+            System.arraycopy(cur, 0, prev, 0, cur.size)
+        }
+        return best
     }
 
     /** Sammenligningsnøgle: små bogstaver, uden accenter (å → a) og uden tegn/mellemrum */
@@ -403,23 +489,28 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             .replace("ø", "o").replace("æ", "ae")
             .filter { it.isLetterOrDigit() }
 
-    /** Faust (8-9 cifre) eller materialenummer (jeres længde); andre tal tilbydes ikke som numre */
-    private fun numType(v: String): String? {
+    /** ISBN (978/979 + 13 cifre, eller 10 cifre ved "ISBN"), materialenummer (jeres længde) eller faust (8-9 cifre) */
+    private fun numType(c: Candidate): String? {
+        val v = c.value
         if (!v.all { it.isDigit() }) return null
         numTypeChoice[v]?.let { return it }
         return when {
+            v.length == 13 && (v.startsWith("978") || v.startsWith("979")) -> "isbn"
+            v.length == 10 && c.isbnHint -> "isbn"
             itemLen != null && v.length == itemLen -> "bmn"
             v.length in 8..9 -> "faust"
             else -> null
         }
     }
 
-    private fun isNumType(type: String) = type == "faust" || type == "bmn"
+    private fun isNumType(type: String) = type == "faust" || type == "bmn" || type == "isbn"
 
-    /** Værdien, som den skrives i søgningen: tal som de er, tekst i anførselstegn */
-    private fun valueOf(text: String, type: String): String =
-        if (isNumType(type)) text.filter { it.isDigit() }
-        else "\"" + text.replace('"', ' ').replace(Regex("\\s+"), " ").trim() + "\""
+    /** Værdien, som den skrives i søgningen: faust og materialenummer som tal, ISBN og tekst i anførselstegn */
+    private fun valueOf(text: String, type: String): String = when (type) {
+        "faust", "bmn" -> text.filter { it.isDigit() }
+        "isbn" -> "\"" + text.filter { it.isDigit() } + "\""
+        else -> "\"" + text.replace('"', ' ').replace(Regex("\\s+"), " ").trim() + "\""
+    }
 
     private fun codeOf(type: String): String? = when (type) {
         "title" -> "term.title"
@@ -428,6 +519,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         "subject" -> "term.subject"
         "faust" -> "faust"
         "bmn" -> "bmn"
+        "isbn" -> "term.isbn"
         else -> null // fritekst
     }
 
@@ -520,37 +612,44 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun showCql() {
         val now = SystemClock.elapsedRealtime()
         val picked = picks.map { it.text }.toSet()
-        val pickedKeys = picks.map { normKey(it.text) }.toSet()
-        val nums = synchronized(candidates) {
-            candidates.values.removeAll { now - it.lastSeen > 1500 }
-            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it.value) != null && it.value !in picked }
-                .sortedByDescending { it.hits }.take(2).map { it.value }
-        }
+        val pickedKeys = picks.map { normKey(it.text) }
         // Numre og tekst blandes ikke i én søgning
         val canNum = picks.none { !isNumType(it.type) }
         val canText = picks.none { isNumType(it.type) }
-        val texts = synchronized(lines) {
-            lines.values.removeAll { now - it.lastSeen > 1500 }
-            val sure = lines.values.filter { it.hits >= 2 && it.key !in pickedKeys }
-            // Dubletter: en linje, der kun er et stykke af en anden (fx "itel" af "Titel"), vises ikke
-            sure.filter { l -> sure.none { o -> o !== l && o.key.length > l.key.length && o.key.length - l.key.length <= 3 && o.key.contains(l.key) } }
-                .sortedByDescending { it.hits }.take(4 - nums.size).map { it.best() }
+        val nums = synchronized(candidates) {
+            candidates.values.removeAll { now - it.lastSeen > 3000 }
+            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it) != null && it.value !in picked }
+                .sortedByDescending { it.lastSeen }.take(2).map { it.value to numType(it)!! }
         }
-        val sig = nums.joinToString(";") { it + "|" + numType(it) } + "#" + texts.joinToString(";") + "#" + canNum + canText
+        val texts = synchronized(lines) {
+            // En linje bliver stående i 3 sekunder, efter den sidst er set, og listen står i den rækkefølge,
+            // linjerne først blev set – så den ikke hopper, mens man bevæger telefonen lidt
+            lines.values.removeAll { now - it.lastSeen > 3000 }
+            lines.values.filter { it.hits >= 3 && pickedKeys.none { k -> similar(it.keys, k) } }
+                .sortedByDescending { it.lastSeen }.take(4 - nums.size)
+                .sortedBy { it.firstSeen }.map { it.best() }
+        }
+        val sig = nums.joinToString(";") { it.first + "|" + it.second } + "#" + texts.joinToString(";") + "#" + canNum + canText
         if (sig == lastCqlSig) return
         lastCqlSig = sig
         list.removeAllViews()
-        for (n in nums) {
-            val type = numType(n) ?: continue
+        for ((n, type) in nums) {
+            val chip = pill(NUM_TYPES[type] ?: type, false) {}
+            chip.setOnClickListener {
+                // Forkert type: vælg en anden
+                val m = android.widget.PopupMenu(this, chip)
+                NUM_TYPES.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
+                m.setOnMenuItemClickListener { item ->
+                    numTypeChoice[n] = NUM_TYPES.keys.elementAt(item.itemId)
+                    lastCqlSig = null; showCql(); true
+                }
+                m.show()
+            }
             list.addView(row(
-                pill(NUM_TYPES[type] ?: type, false) {
-                    // Forkert type: skift mellem Faust og Materialenr.
-                    numTypeChoice[n] = if (type == "faust") "bmn" else "faust"
-                    lastCqlSig = null; showCql()
-                },
-                pill("Søg nu", false) { finishWith(cqlOf(n, numType(n) ?: type)) },
+                chip,
+                pill("Søg nu", false) { finishWith(cqlOf(n, type)) },
                 addPill(canNum) {
-                    picks += Pick(n, numType(n) ?: type)
+                    picks += Pick(n, type)
                     rebuildPicks()
                     lastCqlSig = null; showCql()
                 },
@@ -611,8 +710,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
     }
 
-    /** Ret en linje, kameraet har læst lidt forkert */
+    /** Ret en linje, kameraet har læst lidt forkert – eller flet den med linjen over (fx en titel på to linjer) */
     private fun editPick(p: Pick) {
+        val idx = picks.indexOf(p)
+        val above = if (idx > 0 && isNumType(picks[idx - 1].type) == isNumType(p.type)) picks[idx - 1] else null
         val input = android.widget.EditText(this).apply {
             setText(p.text)
             setSelection(p.text.length)
@@ -626,6 +727,13 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 if (t.isNotEmpty()) { p.text = t; rebuildPicks() }
             }
             .setNegativeButton("Annuller", null)
+            .apply {
+                if (above != null) setNeutralButton("Flet med linjen over") { _, _ ->
+                    above.text = above.text + " " + input.text.toString().trim()
+                    picks.remove(p)
+                    rebuildPicks(); lastCqlSig = null; showCql()
+                }
+            }
             .show()
     }
 
