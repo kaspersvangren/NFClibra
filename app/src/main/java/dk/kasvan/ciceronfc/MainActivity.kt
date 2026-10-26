@@ -1478,6 +1478,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
+        // Midlertidig fejlsøgning til den flytbare bundmenu
+        runTweak(NAV_PROBE_JS)
         pushPageColors()
         handler.postDelayed({ detectCiceroTheme() }, 500)
     }
@@ -2747,6 +2749,82 @@ private val CAMERA_SWAP_JS = """
 })();
 """
 
+/**
+ * Fejlsøgning til bundmenuen: skriver én gang, hvordan Ciceros bundmenu og "…"-menuen er bygget op
+ * (elementtyper, adresser, ikon- og funktionsnavne – ingen lånerdata), så de kan gøres flytbare.
+ */
+private val NAV_PROBE_JS = """
+(function () {
+  if (window.__cnfcNavProbe) return;
+  window.__cnfcNavProbe = true;
+  var H = window.__cnfc, said = {};
+  function log(m) { if (said[m]) return; said[m] = 1; try { CiceroNFC.tweak(m.slice(0, 900)); } catch (e) {} }
+  function cls(el) { var c = (typeof el.className === 'string' ? el.className : '').trim().split(/\s+/).filter(function (x) { return x && !/^ng-/.test(x); }).slice(0, 3).join('.'); return el.tagName.toLowerCase() + (c ? '.' + c : ''); }
+  function icon(el) {
+    var ic = el.querySelector('mat-icon, [data-mat-icon-name], [svgicon], [fonticon], img');
+    if (!ic) return el.querySelector('svg') ? 'svg' : '-';
+    return [ic.textContent, ic.getAttribute('data-mat-icon-name'), ic.getAttribute('svgicon'), ic.getAttribute('fonticon'), ic.getAttribute('src')]
+      .filter(function (x) { return x && x.trim(); }).join('/').replace(/\s+/g, ' ').trim().slice(0, 40) || ic.tagName.toLowerCase();
+  }
+  function desc(el) {
+    var href = el.getAttribute('href') || el.getAttribute('routerlink') || el.getAttribute('ng-reflect-router-link') || '';
+    var lab = [el.getAttribute('aria-label'), el.getAttribute('title'), el.getAttribute('mattooltip')].filter(Boolean).join('/');
+    var txt = H.textOf(el).slice(0, 25);
+    return cls(el) + (href ? ' href=' + href.replace(/\d{4,}/g, '#') : '') + (lab ? ' lbl=' + lab : '') + (txt ? ' txt=' + txt : '') + ' ikon=' + icon(el) +
+      (el.getAttribute('aria-current') ? ' current' : '') + (/active/.test(el.className) ? ' aktiv' : '');
+  }
+  function bar() {
+    var list = document.elementsFromPoint(innerWidth / 2, innerHeight - 3);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].closest('.cdk-overlay-container, [data-cnfc-bar]')) continue;
+      var best = null;
+      for (var e = list[i]; e && e !== document.body; e = e.parentElement) {
+        var r = e.getBoundingClientRect();
+        if (r.bottom >= innerHeight - 2 && r.width >= innerWidth * 0.9 && r.height < innerHeight / 4) best = e;
+      }
+      return best;
+    }
+    return null;
+  }
+  function probeBar() {
+    if (!H.cicero()) return;
+    var b = bar();
+    if (!b) return;
+    var items = b.querySelectorAll('a, button, [role=button], [role=tab], [routerlink]');
+    var out = [], seen = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (seen.some(function (s) { return s.contains(it); })) continue;
+      seen.push(it);
+      out.push((out.length + 1) + ') ' + desc(it));
+    }
+    var chain = [], e = b;
+    for (var k = 0; k < 3 && e && e !== document.body; k++, e = e.parentElement) chain.push(cls(e));
+    // Én linje pr. knap (loggen klipper lange linjer)
+    log('Bundmenu: ' + chain.join(' < ') + ' – ' + out.length + ' knapper');
+    out.forEach(function (o) { log('Bundmenu ' + o); });
+  }
+  function probeMenu() {
+    var panels = document.querySelectorAll('.cdk-overlay-container [role=menu], .cdk-overlay-container .mat-mdc-menu-panel, .cdk-overlay-container .mat-menu-panel');
+    for (var p = 0; p < panels.length; p++) {
+      var items = panels[p].querySelectorAll('[role=menuitem], button, a');
+      var out = [], seen = [];
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (seen.some(function (s) { return s.contains(it); })) continue;
+        seen.push(it);
+        out.push(desc(it));
+      }
+      if (!out.length) continue;
+      log('Menu: ' + cls(panels[p]) + ' – ' + out.length + ' punkter');
+      out.forEach(function (o, n) { log('Menu ' + (n + 1) + ') ' + o); });
+    }
+  }
+  setTimeout(probeBar, 1500);
+  H.onChange(function () { probeBar(); probeMenu(); }, '[data-cnfc], [data-cnfc-bar]');
+})();
+"""
+
 private val TAGS_BUTTON_JS = """
 (function () {
   if (window.__cnfcTags) return;
@@ -2969,7 +3047,8 @@ private val STICKY_BUTTONS_JS = """
   function navTop(pill) {
     var list = document.elementsFromPoint(innerWidth / 2, innerHeight - 3), best = null;
     for (var i = 0; i < list.length; i++) {
-      if (pill.contains(list[i])) continue;
+      // Pillen selv og åbne menuer/baggrunde (fx "…"-menuen) springes over – ellers gled pillen ned over bundmenuen
+      if (pill.contains(list[i]) || (list[i].closest && list[i].closest('.cdk-overlay-container'))) continue;
       for (var e = list[i]; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
         var r = e.getBoundingClientRect();
         if (r.bottom >= innerHeight - 2 && r.width >= innerWidth * 0.9 && r.height < innerHeight / 4) best = r;
