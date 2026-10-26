@@ -681,7 +681,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         synchronized(lines) {
             lines.values.removeAll { now - it.lastSeen > 3000 }
             lines.values.filter { it.hits >= 3 && pickedKeys.none { k -> similar(it.keys, k) } }
-                .forEach { l -> alive["t:" + l.key] = l.firstSeen to (l.best(::fold) to null) }
+                .forEach { l -> alive["t:" + l.key] = l.firstSeen to (l.best(this::fold) to null) }
         }
         // Pladser, hvis linje er væk, bliver ledige; nye linjer fylder ledige pladser i den rækkefølge, de blev set
         for (i in slots.indices) { val sid = slots[i]; if (sid != null && !alive.containsKey(sid)) slots[i] = null }
