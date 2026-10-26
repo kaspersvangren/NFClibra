@@ -64,7 +64,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var picksScroll: android.widget.ScrollView
     private lateinit var pickHeader: TextView
     private lateinit var searchAll: TextView
-    private lateinit var preview: TextView
+    private lateinit var cqlPreview: TextView
 
     private lateinit var executor: ExecutorService
     // Lukkes skærmen midt i en genkendelse, må det sene svar ikke få app'en til at gå ned
@@ -481,7 +481,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         searchAll = pill("Søg", true) {
             if (picks.isNotEmpty()) finishWith(cqlOfPicks())
         }.apply { visibility = View.GONE }
-        preview = TextView(this).apply {
+        cqlPreview = TextView(this).apply {
             textSize = 12f
             setTextColor(tc.sub)
             maxLines = 3
@@ -491,7 +491,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
         root.addView(pickHeader)
         root.addView(picksScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)))
-        root.addView(preview)
+        root.addView(cqlPreview)
         root.addView(searchAll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(6), dp(12), 0) })
     }
 
@@ -563,8 +563,8 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         picksScroll.visibility = if (any) View.VISIBLE else View.GONE
         searchAll.visibility = if (any) View.VISIBLE else View.GONE
         searchAll.text = "Søg (" + picks.size + " valgt" + (if (picks.size == 1) "" else "e") + ")"
-        preview.visibility = if (any) View.VISIBLE else View.GONE
-        preview.text = if (any) cqlOfPicks() else ""
+        cqlPreview.visibility = if (any) View.VISIBLE else View.GONE
+        cqlPreview.text = if (any) cqlOfPicks() else ""
         for (p in picks.toList()) {
             val text = label(p.text).apply { setOnClickListener { editPick(p) } }
             val types = if (isNumType(p.type)) NUM_TYPES else TEXT_TYPES
