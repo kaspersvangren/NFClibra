@@ -190,7 +190,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 // plads til fire linjer – så intet hopper, mens listen skifter
                 addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, frameH + dp(70)))
                 addView(hint)
-                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4 * 58)))
+                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4 * 62)))
                 buildCqlParts(this)
             } else {
                 addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -652,6 +652,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     private var lastCqlSig: String? = null
 
+    // Fire faste pladser på skærmen: en linje beholder sin plads, til den forsvinder; nye linjer tager en ledig plads
+    private val slots = arrayOfNulls<String>(4)
+    private val rowH get() = dp(56)
+
     private fun showCql() {
         val now = SystemClock.elapsedRealtime()
         val picked = picks.map { it.text }.toSet()
@@ -659,67 +663,86 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         // Numre og tekst blandes ikke i én søgning
         val canNum = picks.none { !isNumType(it.type) }
         val canText = picks.none { isNumType(it.type) }
-        val nums = synchronized(candidates) {
+        // Det, der kan vises nu: id -> (sorteringstid, visning)
+        val alive = LinkedHashMap<String, Pair<Long, Pair<String, String?>>>()
+        synchronized(candidates) {
             candidates.values.removeAll { now - it.lastSeen > 3000 }
             val sure = candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it) != null && it.value !in picked }
             // Et nummer, der kun er en del af et andet (fx uden første ciffer), vises ikke
             sure.filter { c -> sure.none { o -> o !== c && o.value.length > c.value.length && o.value.length - c.value.length <= 2 && o.value.contains(c.value) } }
                 .filter { c -> picked.none { it.length > c.value.length && it.length - c.value.length <= 2 && it.contains(c.value) } }
-                .sortedByDescending { it.lastSeen }.take(2).map { it.value to numType(it)!! }
+                .forEach { c -> alive["n:" + c.value] = 0L to (c.value to numType(c)) }
         }
-        val texts = synchronized(lines) {
-            // En linje bliver stående i 3 sekunder, efter den sidst er set, og listen står i den rækkefølge,
-            // linjerne først blev set – så den ikke hopper, mens man bevæger telefonen lidt
+        synchronized(lines) {
             lines.values.removeAll { now - it.lastSeen > 3000 }
             lines.values.filter { it.hits >= 3 && pickedKeys.none { k -> similar(it.keys, k) } }
-                .sortedByDescending { it.lastSeen }.take(4 - nums.size)
-                .sortedBy { it.firstSeen }.map { it.best() }
+                .forEach { l -> alive["t:" + l.key] = l.firstSeen to (l.best() to null) }
         }
-        val sig = nums.joinToString(";") { it.first + "|" + it.second } + "#" + texts.joinToString(";") + "#" + canNum + canText
+        // Pladser, hvis linje er væk, bliver ledige; nye linjer fylder ledige pladser i den rækkefølge, de blev set
+        for (i in slots.indices) { val sid = slots[i]; if (sid != null && !alive.containsKey(sid)) slots[i] = null }
+        for ((id, _) in alive.entries.sortedBy { it.value.first }) {
+            if (id in slots) continue
+            val free = slots.indexOfFirst { it == null }
+            if (free < 0) break
+            slots[free] = id
+        }
+        val sig = slots.joinToString(";") { id -> id?.let { it + "=" + alive[it]?.second } ?: "-" } + "#" + canNum + canText
         if (sig == lastCqlSig) return
         lastCqlSig = sig
         list.removeAllViews()
-        for ((n, type) in nums) {
-            val chip = pill(NUM_TYPES[type] ?: type, false) {}
-            chip.setOnClickListener {
-                // Forkert type: vælg en anden
-                val m = android.widget.PopupMenu(this, chip)
-                NUM_TYPES.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
-                m.setOnMenuItemClickListener { item ->
-                    numTypeChoice[n] = NUM_TYPES.keys.elementAt(item.itemId)
-                    lastCqlSig = null; showCql(); true
+        val empty = slots.all { it == null }
+        for (i in slots.indices) {
+            val id = slots[i]
+            val shown = id?.let { alive[it]?.second }
+            val v: View = when {
+                shown == null && empty && i == 0 -> TextView(this).apply {
+                    text = "Ingen tekst fundet endnu"
+                    textSize = 15f
+                    setTextColor(tc.sub)
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(4), 0, dp(4), 0)
                 }
-                m.show()
+                shown == null -> View(this)
+                shown.second != null -> numRow(shown.first, shown.second!!, canNum)
+                else -> textRow(shown.first, canText)
             }
-            list.addView(row(
-                chip,
-                pill("Søg nu", false) { finishWith(cqlOf(n, type)) },
-                addPill(canNum) {
-                    picks += Pick(n, type)
-                    rebuildPicks()
-                    lastCqlSig = null; showCql()
-                },
-                first = label(n, 18f),
-            ))
+            list.addView(v, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, rowH).apply { setMargins(0, dp(3), 0, dp(3)) })
         }
-        for (t in texts) {
-            list.addView(row(
-                pill("Søg nu", false) { finishWith(cqlOf(t, "free")) },
-                addPill(canText) {
-                    picks += Pick(t, "free")
-                    rebuildPicks()
-                    lastCqlSig = null; showCql()
-                },
-                first = label(t),
-            ))
-        }
-        if (nums.isEmpty() && texts.isEmpty()) list.addView(TextView(this).apply {
-            text = "Ingen tekst fundet endnu"
-            textSize = 15f
-            setTextColor(tc.sub)
-            setPadding(dp(4), dp(8), dp(4), dp(8))
-        })
     }
+
+    private fun numRow(n: String, type: String, canNum: Boolean): View {
+        val chip = pill(NUM_TYPES[type] ?: type, false) {}
+        chip.setOnClickListener {
+            // Forkert type: vælg en anden
+            val m = android.widget.PopupMenu(this, chip)
+            NUM_TYPES.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
+            m.setOnMenuItemClickListener { item ->
+                numTypeChoice[n] = NUM_TYPES.keys.elementAt(item.itemId)
+                lastCqlSig = null; showCql(); true
+            }
+            m.show()
+        }
+        return row(
+            chip,
+            pill("Søg nu", false) { finishWith(cqlOf(n, type)) },
+            addPill(canNum) {
+                picks += Pick(n, type)
+                rebuildPicks()
+                lastCqlSig = null; showCql()
+            },
+            first = label(n, 18f),
+        )
+    }
+
+    private fun textRow(t: String, canText: Boolean): View = row(
+        pill("Søg nu", false) { finishWith(cqlOf(t, "free")) },
+        addPill(canText) {
+            picks += Pick(t, "free")
+            rebuildPicks()
+            lastCqlSig = null; showCql()
+        },
+        first = label(t),
+    )
 
     /** ＋ – grå og uden virkning, når linjen ikke kan kombineres med det, der allerede er valgt */
     private fun addPill(enabled: Boolean, onClick: () -> Unit) =
