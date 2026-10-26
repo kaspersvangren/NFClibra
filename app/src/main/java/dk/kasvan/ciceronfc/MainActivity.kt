@@ -76,6 +76,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val TW_FLY = "tweakFlySwipe"
         const val TW_CAM = "tweakItemCamera"
         const val TW_NAV = "tweakNav"
+        const val TW_CQL = "tweakCqlCamera"
         const val PREF_NAV_ORDER = "navOrder"
         /** Bundmenuens funktioner (nøgle til navn); de fire første er Ciceros standard-bjælke */
         val NAV_FUNCS = linkedMapOf(
@@ -178,6 +179,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private val cameraRequestCode = 42
     private val unlockRequestCode = 43
     private val scanRequestCode = 44
+    private val cqlRequestCode = 45
     private lateinit var lockView: LinearLayout
     private lateinit var pinPad: PinPad
     /** Pop-op'en for sæt i flere dele */
@@ -825,6 +827,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             if (resultCode == RESULT_OK) data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let { onFieldScanned(it) }
             return
         }
+        if (requestCode == cqlRequestCode) {
+            if (resultCode == RESULT_OK) data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let { onCqlScanned(it) }
+            return
+        }
         if (requestCode != unlockRequestCode) return
         authEnded()
         if (resultCode == RESULT_OK) unlock() else openToolAfterUnlock = false
@@ -1178,6 +1184,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             TW_FLY to "Swipe fly-in væk (mod højre)",
             TW_CAM to "NFClibras kamera i materialenummer-felter",
             TW_NAV to "Egen bundmenu",
+            TW_CQL to "Kamera i CQL-søgning",
         )
         val switches = tweaks.map { (key, label) ->
             switch(label, tweakOn(key)) { on ->
@@ -1484,6 +1491,23 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { staffKeys.hide() }
         }
 
+        /** Kamera-knappen i CQL-feltet (app'ens egen) */
+        @JavascriptInterface
+        fun scanCql() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread {
+                if (Hub.locked || !tweakOn(TW_CQL)) return@runOnUiThread
+                openingOwn()
+                @Suppress("DEPRECATION")
+                startActivityForResult(
+                    Intent(this@MainActivity, ScanActivity::class.java)
+                        .putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette)
+                        .putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_CQL),
+                    cqlRequestCode,
+                )
+            }
+        }
+
         /** Ciceros kamera-knap i et materialenummer-felt: NFClibras kamera åbnes i stedet (feltet er valgt i forvejen) */
         @JavascriptInterface
         fun scanItem() {
@@ -1562,6 +1586,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
+        if (tweakOn(TW_CQL)) runTweak(CQL_CAMERA_JS)
         if (tweakOn(TW_NAV)) runTweak(NAV_HOVER_JS)
         if (tweakOn(TW_NAV)) runTweak(NAV_LAYOUT_JS.replace("%ORDER%", navOrder().take(4).joinToString(",", "[", "]") { "'" + it + "'" }))
         pushPageColors()
@@ -1643,6 +1668,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 LogBuf.add("Materialenummer læst med kamera")
             }, 200)
         }
+    }
+
+    /** Søgningen fra kameraet sættes i CQL-feltet (i stedet for det, der stod), og der trykkes Søg */
+    private fun onCqlScanned(cql: String) {
+        if (cql.length > 600 || cql.contains('\n')) return
+        if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
+        handler.postDelayed({
+            if (Hub.locked) return@postDelayed
+            runJs(CQL_APPLY_JS.replace("%CQL%", org.json.JSONObject.quote(cql))) { r ->
+                LogBuf.add(if (r?.contains("ok") == true) "CQL-søgning fra kameraet" else "CQL-søgning fra kameraet: ${r?.trim('"')}")
+            }
+        }, 200)
     }
 
     /** Værktøjets kamera til materialenummeret; resultatet tastes ind i feltet (onFieldScanned) */
@@ -3047,6 +3084,80 @@ private val NAV_HOVER_JS = """
   sync();
   H.onChange(sync);
 })();
+"""
+
+/** Kamera-ikon i Ciceros CQL-felt (ved siden af historik-ikonet): åbner kameraet til søgning */
+private val CQL_CAMERA_JS = """
+(function () {
+  if (window.__cnfcCql) return;
+  window.__cnfcCql = true;
+  var H = window.__cnfc, logged = false;
+  function cqlField() {
+    var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
+    for (var i = 0; i < ls.length; i++) {
+      if (H.textOf(ls[i]).replace(/\*/g, '').trim() !== 'CQL') continue;
+      var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field');
+      if (ff && ff.querySelector('input, textarea')) return ff;
+    }
+    return null;
+  }
+  function make(color) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-cnfc', 'cqlcam');
+    b.setAttribute('aria-label', 'Søg med kamera');
+    b.style.cssText = 'background:none;border:none;padding:4px;margin:0 10px 0 0;cursor:pointer;display:inline-flex;align-items:center;' +
+      'color:' + color + ';-webkit-tap-highlight-color:transparent;vertical-align:middle;';
+    b.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' +
+      '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var ff = cqlField();
+      window.__cnfcCqlEl = ff && ff.querySelector('input, textarea');
+      try { CiceroNFC.scanCql(); } catch (x) {}
+    }, true);
+    return b;
+  }
+  function sync() {
+    if (!H.cicero()) return;
+    var ff = cqlField();
+    if (!ff || ff.querySelector('[data-cnfc="cqlcam"]')) return;
+    // Ved siden af historik-ikonet (eller sidst i feltet, hvis det ikke findes)
+    var ic = ff.querySelector('mat-icon');
+    var host = ic ? (ic.closest('button, [role=button]') || ic) : null;
+    var color = ic ? getComputedStyle(ic).color : 'currentColor';
+    var b = make(color);
+    if (host && host.parentElement) host.parentElement.insertBefore(b, host);
+    else (ff.querySelector('.mat-mdc-form-field-flex') || ff).appendChild(b);
+    if (!logged) { logged = true; try { CiceroNFC.tweak('Kamera sat i CQL-feltet'); } catch (x) {} }
+  }
+  sync();
+  H.onChange(sync, '[data-cnfc="cqlcam"]');
+})();
+"""
+
+/** Sætter søgningen fra kameraet i CQL-feltet og trykker på Ciceros Søg-knap */
+private val CQL_APPLY_JS = """
+(function () {
+  var H = window.__cnfc, v = %CQL%;
+  var el = window.__cnfcCqlEl;
+  if (!el || !document.contains(el)) {
+    var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
+    for (var i = 0; i < ls.length && !el; i++) if (H.textOf(ls[i]).replace(/\*/g, '').trim() === 'CQL') {
+      var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field'); el = ff && ff.querySelector('input, textarea');
+    }
+  }
+  if (!el) return 'intet CQL-felt';
+  H.setValue(el, v, true);
+  // Ciceros egen Søg-knap (også når pillen har gemt rækken af vejen)
+  var bs = document.querySelectorAll('button');
+  for (var j = 0; j < bs.length; j++) {
+    var b = bs[j];
+    if (b.closest('[data-cnfc-bar], [data-cnfc], .cdk-overlay-container')) continue;
+    if (/^s[øo]g${'$'}/i.test(H.textOf(b)) && !b.disabled) { setTimeout(function () { b.click(); }, 100); return 'ok'; }
+  }
+  return 'ok (Søg-knap ikke fundet – tryk selv Søg)';
+})()
 """
 
 private val TAGS_BUTTON_JS = """

@@ -40,6 +40,11 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     companion object {
         const val EXTRA_VALUE = "value"
         const val EXTRA_DARK = "dark"
+        /** "cql": søgning i Ciceros CQL-felt – tekstlinjer og numre, der kan søges på; resultatet er en CQL-streng */
+        const val EXTRA_MODE = "mode"
+        const val MODE_CQL = "cql"
+        private val TEXT_TYPES = linkedMapOf("free" to "Fritekst", "title" to "Titel", "creator" to "Forfatter", "dk5" to "DK5", "subject" to "Emneord")
+        private val NUM_TYPES = linkedMapOf("faust" to "Faust", "bmn" to "Materialenr.")
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
     }
 
@@ -47,6 +52,18 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         var clean = 0      // set uden bindestreg/mellemrum
         var isbnHint = false
     }
+
+    // ---------- CQL-søgning ----------
+    private val cqlMode by lazy { intent.getStringExtra(EXTRA_MODE) == MODE_CQL }
+    private class Line(val text: String, var lastSeen: Long, var hits: Int)
+    private class Pick(var text: String, var type: String)
+    private val lines = LinkedHashMap<String, Line>()
+    private val picks = ArrayList<Pick>()
+    private val numTypeChoice = HashMap<String, String>()
+    private lateinit var picksBox: LinearLayout
+    private lateinit var picksScroll: android.widget.ScrollView
+    private lateinit var pickHeader: TextView
+    private lateinit var searchAll: TextView
 
     private lateinit var executor: ExecutorService
     // Lukkes skærmen midt i en genkendelse, må det sene svar ikke få app'en til at gå ned
@@ -70,7 +87,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private val nfc by lazy { NfcAdapter.getDefaultAdapter(this) }
     // Sigte-rammens størrelse på skærmen
     private val frameW get() = dp(300)
-    private val frameH get() = dp(140)
+    private val frameH get() = dp(if (cqlMode) 110 else 140)
 
     private val barcodes by lazy { BarcodeScanning.getClient() }
     private val texts by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
@@ -103,7 +120,8 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
         frame.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ -> frameRect = Rect(l, t, r, b) }
         hint = TextView(this).apply {
-            text = "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
+            text = if (cqlMode) "Sigt på én ting ad gangen – titel, forfatter, faust … Tryk ＋ for at gemme en linje, eller Søg nu."
+            else "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
             textSize = 15f
             setTextColor(sub)
             setPadding(dp(16), dp(10), dp(16), dp(6))
@@ -142,7 +160,12 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             fitsSystemWindows = true
             addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(hint)
-            addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
+            if (cqlMode) {
+                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                buildCqlParts(this)
+            } else {
+                addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
+            }
             addView(bottom)
         }
         setContentView(root)
@@ -207,6 +230,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         if (text != null) {
             for (block in text.textBlocks) for (line in block.lines) {
                 if (!inFrame(line.boundingBox)) continue
+                if (cqlMode) addLine(line.text, now)
                 val isbnLine = line.text.contains("ISBN", ignoreCase = true)
                 for (m in DIGITS.findAll(line.text)) {
                     val v = m.value.filter { it.isDigit() }
@@ -249,6 +273,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     }
 
     private fun showCandidates() {
+        if (cqlMode) { showCql(); return }
         val now = SystemClock.elapsedRealtime()
         val shown = synchronized(candidates) {
             // Listen følger billedet: et nummer, der ikke er set i rammen i 1½ sekund, forsvinder
@@ -342,6 +367,196 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         tier(c) == 2 -> "andet tal"
         c.barcode -> "stregkode"
         else -> "tal"
+    }
+
+    // ---------- CQL-søgning ----------
+
+    private fun addLine(raw: String, now: Long) {
+        val t = raw.replace(Regex("\\s+"), " ").trim()
+        if (t.length !in 2..80) return
+        // Rene tal klares som numre (faust/materialenummer)
+        if (t.replace(Regex("[ -]"), "").all { it.isDigit() }) return
+        synchronized(lines) {
+            val l = lines.getOrPut(t) { Line(t, now, 0) }
+            l.lastSeen = now; l.hits++
+        }
+    }
+
+    /** Faust (8-9 cifre) eller materialenummer (jeres længde); andre tal tilbydes ikke som numre */
+    private fun numType(v: String): String? {
+        if (!v.all { it.isDigit() }) return null
+        numTypeChoice[v]?.let { return it }
+        return when {
+            itemLen != null && v.length == itemLen -> "bmn"
+            v.length in 8..9 -> "faust"
+            else -> null
+        }
+    }
+
+    private fun cqlOf(text: String, type: String): String {
+        val t = text.replace('"', ' ').replace(Regex("\\s+"), " ").trim()
+        return when (type) {
+            "title" -> "term.title=\"" + t + "\""
+            "creator" -> "term.creator=\"" + t + "\""
+            "dk5" -> "dk5=\"" + t + "\""
+            "subject" -> "term.subject=\"" + t + "\""
+            "faust" -> "faust=" + t.filter { it.isDigit() }
+            "bmn" -> "bmn=" + t.filter { it.isDigit() }
+            else -> "\"" + t + "\""
+        }
+    }
+
+    private fun finishWith(cql: String) {
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_VALUE, cql))
+        finish()
+    }
+
+    private fun pill(label: String, filled: Boolean, onClick: () -> Unit) = TextView(this).apply {
+        text = label
+        textSize = 14f
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        gravity = Gravity.CENTER
+        setTextColor(if (filled) Color.WHITE else tc.blue)
+        background = GradientDrawable().apply {
+            setColor(if (filled) tc.blue else Color.TRANSPARENT)
+            setStroke(dp(2), tc.blue)
+            cornerRadius = dp(18).toFloat()
+        }
+        setPadding(dp(12), dp(7), dp(12), dp(7))
+        setOnClickListener { onClick() }
+    }
+
+    private fun row(vararg views: View, first: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = GradientDrawable().apply { setColor(tc.card); cornerRadius = dp(10).toFloat() }
+        setPadding(dp(12), dp(6), dp(8), dp(6))
+        addView(first, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        views.forEach { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), 0, dp(3)) }
+    }
+
+    private fun label(t: String, size: Float = 16f) = TextView(this).apply {
+        text = t
+        textSize = size
+        setTextColor(tc.fg)
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+    }
+
+    private fun buildCqlParts(root: LinearLayout) {
+        list.setPadding(dp(12), 0, dp(12), dp(4))
+        pickHeader = TextView(this).apply {
+            text = "Valgt"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(tc.blue)
+            setPadding(dp(16), dp(6), dp(16), dp(2))
+            visibility = View.GONE
+        }
+        picksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(12), 0) }
+        picksScroll = android.widget.ScrollView(this).apply { addView(picksBox); visibility = View.GONE }
+        searchAll = pill("Søg", true) {
+            if (picks.isNotEmpty()) finishWith(picks.joinToString(" AND ") { cqlOf(it.text, it.type) })
+        }.apply { visibility = View.GONE }
+        root.addView(pickHeader)
+        root.addView(picksScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)))
+        root.addView(searchAll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(6), dp(12), 0) })
+    }
+
+    private var lastCqlSig: String? = null
+
+    private fun showCql() {
+        val now = SystemClock.elapsedRealtime()
+        val nums = synchronized(candidates) {
+            candidates.values.removeAll { now - it.lastSeen > 1500 }
+            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it.value) != null }
+                .sortedByDescending { it.hits }.take(2).map { it.value }
+        }
+        val picked = picks.map { it.text }.toSet()
+        val texts = synchronized(lines) {
+            lines.values.removeAll { now - it.lastSeen > 1500 }
+            lines.values.filter { it.hits >= 2 && it.text !in picked }.sortedByDescending { it.hits }.take(4 - nums.size).map { it.text }
+        }
+        val sig = nums.joinToString(";") { it + "|" + numType(it) } + "#" + texts.joinToString(";")
+        if (sig == lastCqlSig) return
+        lastCqlSig = sig
+        list.removeAllViews()
+        for (n in nums) {
+            val type = numType(n) ?: continue
+            list.addView(row(
+                pill(NUM_TYPES[type] ?: type, false) {
+                    // Forkert type: skift mellem Faust og Materialenr.
+                    numTypeChoice[n] = if (type == "faust") "bmn" else "faust"
+                    lastCqlSig = null; showCql()
+                },
+                pill("Søg nu", true) { finishWith(cqlOf(n, numType(n) ?: type)) },
+                first = label(n, 18f),
+            ))
+        }
+        for (t in texts) {
+            list.addView(row(
+                pill("Søg nu", false) { finishWith(cqlOf(t, "free")) },
+                pill("＋", true) {
+                    picks += Pick(t, "free")
+                    rebuildPicks()
+                    lastCqlSig = null; showCql()
+                },
+                first = label(t),
+            ))
+        }
+        if (nums.isEmpty() && texts.isEmpty()) list.addView(TextView(this).apply {
+            text = "Ingen tekst fundet endnu"
+            textSize = 15f
+            setTextColor(tc.sub)
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+        })
+    }
+
+    private fun rebuildPicks() {
+        picksBox.removeAllViews()
+        val any = picks.isNotEmpty()
+        pickHeader.visibility = if (any) View.VISIBLE else View.GONE
+        picksScroll.visibility = if (any) View.VISIBLE else View.GONE
+        searchAll.visibility = if (any) View.VISIBLE else View.GONE
+        searchAll.text = "Søg (" + picks.size + " valgt" + (if (picks.size == 1) "" else "e") + ")"
+        for (p in picks.toList()) {
+            val text = label(p.text).apply { setOnClickListener { editPick(p) } }
+            val typeChip = pill(TEXT_TYPES[p.type] ?: p.type, false) {}
+            typeChip.setOnClickListener {
+                val m = android.widget.PopupMenu(this, typeChip)
+                TEXT_TYPES.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
+                m.setOnMenuItemClickListener { item ->
+                    p.type = TEXT_TYPES.keys.elementAt(item.itemId)
+                    rebuildPicks(); true
+                }
+                m.show()
+            }
+            picksBox.addView(row(
+                typeChip,
+                pill("Søg nu", false) { finishWith(cqlOf(p.text, p.type)) },
+                pill("✕", false) { picks.remove(p); rebuildPicks(); lastCqlSig = null; showCql() },
+                first = text,
+            ))
+        }
+    }
+
+    /** Ret en linje, kameraet har læst lidt forkert */
+    private fun editPick(p: Pick) {
+        val input = android.widget.EditText(this).apply {
+            setText(p.text)
+            setSelection(p.text.length)
+            setSingleLine(true)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Ret teksten")
+            .setView(FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(input) })
+            .setPositiveButton("OK") { _, _ ->
+                val t = input.text.toString().trim()
+                if (t.isNotEmpty()) { p.text = t; rebuildPicks() }
+            }
+            .setNegativeButton("Annuller", null)
+            .show()
     }
 
     // Holder på NFC, mens kameraet er fremme – ellers melder Android "ingen understøttede apps", når bogen er tæt på
