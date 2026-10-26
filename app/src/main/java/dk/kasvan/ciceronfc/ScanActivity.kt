@@ -447,10 +447,12 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun addLine(raw: String, now: Long) {
         val t = raw.replace(Regex("\\s+"), " ").trim().trim(':', ';', ',', '-', '–', '•', '|', '*', '/', ' ')
         if (t.length !in 2..80) return
-        // Rene tal klares som numre (faust/materialenummer/ISBN)
-        if (t.replace(Regex("[ -]"), "").all { it.isDigit() }) return
         val k = normKey(t)
         if (k.length < 2 || k in STOP_WORDS) return
+        // Lange tal klares som numre (faust/materialenummer/ISBN); korte tal (fx titlen "1984") er tekst
+        if (k.all { it.isDigit() } && k.length >= 8) return
+        // Et nummer, der er læst forkert (fx "S49157e393"): mest cifre og intet mellemrum – ikke en tekstlinje
+        if (k.length >= 6 && !t.contains(' ') && k.count { it.isDigit() } * 10 >= k.length * 6) return
         synchronized(lines) {
             // Samme linje læst delvist eller lidt forskelligt samles under én
             val l = lines[k] ?: lines.values.firstOrNull { similar(it.keys, k) } ?: Line(k, now, now, 0).also { lines[k] = it }
@@ -618,7 +620,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val canText = picks.none { isNumType(it.type) }
         val nums = synchronized(candidates) {
             candidates.values.removeAll { now - it.lastSeen > 3000 }
-            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it) != null && it.value !in picked }
+            val sure = candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it) != null && it.value !in picked }
+            // Et nummer, der kun er en del af et andet (fx uden første ciffer), vises ikke
+            sure.filter { c -> sure.none { o -> o !== c && o.value.length > c.value.length && o.value.length - c.value.length <= 2 && o.value.contains(c.value) } }
+                .filter { c -> picked.none { it.length > c.value.length && it.length - c.value.length <= 2 && it.contains(c.value) } }
                 .sortedByDescending { it.lastSeen }.take(2).map { it.value to numType(it)!! }
         }
         val texts = synchronized(lines) {
