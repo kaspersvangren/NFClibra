@@ -64,6 +64,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var picksScroll: android.widget.ScrollView
     private lateinit var pickHeader: TextView
     private lateinit var searchAll: TextView
+    private lateinit var preview: TextView
 
     private lateinit var executor: ExecutorService
     // Lukkes skærmen midt i en genkendelse, må det sene svar ikke få app'en til at gå ned
@@ -393,17 +394,38 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
     }
 
-    private fun cqlOf(text: String, type: String): String {
-        val t = text.replace('"', ' ').replace(Regex("\\s+"), " ").trim()
-        return when (type) {
-            "title" -> "term.title=\"" + t + "\""
-            "creator" -> "term.creator=\"" + t + "\""
-            "dk5" -> "dk5=\"" + t + "\""
-            "subject" -> "term.subject=\"" + t + "\""
-            "faust" -> "faust=" + t.filter { it.isDigit() }
-            "bmn" -> "bmn=" + t.filter { it.isDigit() }
-            else -> "\"" + t + "\""
+    private fun isNumType(type: String) = type == "faust" || type == "bmn"
+
+    /** Værdien, som den skrives i søgningen: tal som de er, tekst i anførselstegn */
+    private fun valueOf(text: String, type: String): String =
+        if (isNumType(type)) text.filter { it.isDigit() }
+        else "\"" + text.replace('"', ' ').replace(Regex("\\s+"), " ").trim() + "\""
+
+    private fun codeOf(type: String): String? = when (type) {
+        "title" -> "term.title"
+        "creator" -> "term.creator"
+        "dk5" -> "dk5"
+        "subject" -> "term.subject"
+        "faust" -> "faust"
+        "bmn" -> "bmn"
+        else -> null // fritekst
+    }
+
+    private fun cqlOf(text: String, type: String): String =
+        codeOf(type)?.let { it + "=" + valueOf(text, type) } ?: valueOf(text, type)
+
+    /** Samme type samles med OR i parentes, forskellige typer med AND; fritekst-linjer hver for sig med AND */
+    private fun cqlOfPicks(): String {
+        val parts = ArrayList<String>()
+        val groups = LinkedHashMap<String, MutableList<Pick>>()
+        for (p in picks) groups.getOrPut(p.type) { ArrayList() } += p
+        for ((type, ps) in groups) {
+            val code = codeOf(type)
+            if (code == null) { ps.forEach { parts += valueOf(it.text, type) }; continue }
+            parts += if (ps.size == 1) code + "=" + valueOf(ps[0].text, type)
+            else code + "=(" + ps.joinToString(" OR ") { valueOf(it.text, type) } + ")"
         }
+        return parts.joinToString(" AND ")
     }
 
     private fun finishWith(cql: String) {
@@ -457,10 +479,19 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         picksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(12), 0) }
         picksScroll = android.widget.ScrollView(this).apply { addView(picksBox); visibility = View.GONE }
         searchAll = pill("Søg", true) {
-            if (picks.isNotEmpty()) finishWith(picks.joinToString(" AND ") { cqlOf(it.text, it.type) })
+            if (picks.isNotEmpty()) finishWith(cqlOfPicks())
         }.apply { visibility = View.GONE }
+        preview = TextView(this).apply {
+            textSize = 12f
+            setTextColor(tc.sub)
+            maxLines = 3
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(16), dp(4), dp(16), 0)
+            visibility = View.GONE
+        }
         root.addView(pickHeader)
         root.addView(picksScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)))
+        root.addView(preview)
         root.addView(searchAll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(6), dp(12), 0) })
     }
 
@@ -468,17 +499,20 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     private fun showCql() {
         val now = SystemClock.elapsedRealtime()
+        val picked = picks.map { it.text }.toSet()
         val nums = synchronized(candidates) {
             candidates.values.removeAll { now - it.lastSeen > 1500 }
-            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it.value) != null }
+            candidates.values.filter { (it.barcode || it.hits >= 2) && numType(it.value) != null && it.value !in picked }
                 .sortedByDescending { it.hits }.take(2).map { it.value }
         }
-        val picked = picks.map { it.text }.toSet()
+        // Numre og tekst blandes ikke i én søgning
+        val canNum = picks.none { !isNumType(it.type) }
+        val canText = picks.none { isNumType(it.type) }
         val texts = synchronized(lines) {
             lines.values.removeAll { now - it.lastSeen > 1500 }
             lines.values.filter { it.hits >= 2 && it.text !in picked }.sortedByDescending { it.hits }.take(4 - nums.size).map { it.text }
         }
-        val sig = nums.joinToString(";") { it + "|" + numType(it) } + "#" + texts.joinToString(";")
+        val sig = nums.joinToString(";") { it + "|" + numType(it) } + "#" + texts.joinToString(";") + "#" + canNum + canText
         if (sig == lastCqlSig) return
         lastCqlSig = sig
         list.removeAllViews()
@@ -490,14 +524,19 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                     numTypeChoice[n] = if (type == "faust") "bmn" else "faust"
                     lastCqlSig = null; showCql()
                 },
-                pill("Søg nu", true) { finishWith(cqlOf(n, numType(n) ?: type)) },
+                pill("Søg nu", false) { finishWith(cqlOf(n, numType(n) ?: type)) },
+                addPill(canNum) {
+                    picks += Pick(n, numType(n) ?: type)
+                    rebuildPicks()
+                    lastCqlSig = null; showCql()
+                },
                 first = label(n, 18f),
             ))
         }
         for (t in texts) {
             list.addView(row(
                 pill("Søg nu", false) { finishWith(cqlOf(t, "free")) },
-                pill("＋", true) {
+                addPill(canText) {
                     picks += Pick(t, "free")
                     rebuildPicks()
                     lastCqlSig = null; showCql()
@@ -513,6 +552,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         })
     }
 
+    /** ＋ – grå og uden virkning, når linjen ikke kan kombineres med det, der allerede er valgt */
+    private fun addPill(enabled: Boolean, onClick: () -> Unit) =
+        pill("＋", true) { if (enabled) onClick() }.apply { alpha = if (enabled) 1f else 0.3f }
+
     private fun rebuildPicks() {
         picksBox.removeAllViews()
         val any = picks.isNotEmpty()
@@ -520,14 +563,17 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         picksScroll.visibility = if (any) View.VISIBLE else View.GONE
         searchAll.visibility = if (any) View.VISIBLE else View.GONE
         searchAll.text = "Søg (" + picks.size + " valgt" + (if (picks.size == 1) "" else "e") + ")"
+        preview.visibility = if (any) View.VISIBLE else View.GONE
+        preview.text = if (any) cqlOfPicks() else ""
         for (p in picks.toList()) {
             val text = label(p.text).apply { setOnClickListener { editPick(p) } }
-            val typeChip = pill(TEXT_TYPES[p.type] ?: p.type, false) {}
+            val types = if (isNumType(p.type)) NUM_TYPES else TEXT_TYPES
+            val typeChip = pill(types[p.type] ?: p.type, false) {}
             typeChip.setOnClickListener {
                 val m = android.widget.PopupMenu(this, typeChip)
-                TEXT_TYPES.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
+                types.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
                 m.setOnMenuItemClickListener { item ->
-                    p.type = TEXT_TYPES.keys.elementAt(item.itemId)
+                    p.type = types.keys.elementAt(item.itemId)
                     rebuildPicks(); true
                 }
                 m.show()
