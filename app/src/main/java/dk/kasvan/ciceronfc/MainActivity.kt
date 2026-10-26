@@ -75,6 +75,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val TW_TAGS = "tweakTags"
         const val TW_FLY = "tweakFlySwipe"
         const val TW_CAM = "tweakItemCamera"
+        const val TW_NAV = "tweakNav"
+        const val PREF_NAV_ORDER = "navOrder"
+        /** Bundmenuens funktioner (nøgle til navn); de fire første er Ciceros standard-bjælke */
+        val NAV_FUNCS = linkedMapOf(
+            "catalogue" to "Katalog", "patron" to "Lånere", "circulation" to "Udlån & aflevering",
+            "reservations" to "Reservationer & bookinger", "accession" to "Indkøb", "tasks" to "Opgaver",
+            "news" to "Nyheder", "help" to "Hjælp", "admin" to "Admin",
+        )
         const val PREF_SOUND = "sound"
         const val PREF_PIN_BIG = "pinPadBig"
     }
@@ -1051,6 +1059,74 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun tweakOn(key: String) = prefs().getBoolean(key, prefs().getBoolean(PREF_TWEAKS, true))
 
     /** Alle indstillinger samlet ét sted. Ændringer gælder med det samme; tilpasninger af Cicero ved lukning. */
+    /** Alle bundmenuens funktioner i brugerens rækkefølge; de fire første står i bjælken */
+    private fun navOrder(): List<String> {
+        val saved = prefs().getString(PREF_NAV_ORDER, null)?.split(",")?.filter { it in NAV_FUNCS } ?: emptyList()
+        return (saved + NAV_FUNCS.keys.filter { it !in saved }).distinct()
+    }
+
+    /** Indret bundmenu: pile op/ned; de fire øverste står i bjælken, resten under "…" */
+    private fun showNavEditor() {
+        val order = navOrder().toMutableList()
+        val before = order.take(4)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(12), dp(8))
+        }
+        fun rebuild() {
+            col.removeAllViews()
+            order.forEachIndexed { i, k ->
+                if (i == 0 || i == 4) col.addView(TextView(this).apply {
+                    text = if (i == 0) "I bjælken (fra venstre)" else "Under …"
+                    textSize = 13f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    setTextColor(pal.blue)
+                    setPadding(0, dp(if (i == 0) 6 else 16), 0, dp(4))
+                })
+                fun arrow(t: String, enabled: Boolean, move: () -> Unit) = TextView(this).apply {
+                    text = t
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    alpha = if (enabled) 1f else 0.25f
+                    setPadding(dp(14), dp(6), dp(14), dp(6))
+                    if (enabled) setOnClickListener { move(); rebuild() }
+                }
+                col.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@MainActivity).apply {
+                        text = NAV_FUNCS[k]
+                        textSize = 16f
+                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(arrow("↑", i > 0) { order.add(i - 1, order.removeAt(i)) })
+                    addView(arrow("↓", i < order.size - 1) { order.add(i + 1, order.removeAt(i)) })
+                })
+            }
+            col.addView(TextView(this).apply {
+                text = "\"Produkter & links\" ligger altid under …"
+                textSize = 13f
+                setTextColor(pal.sub)
+                setPadding(0, dp(10), 0, 0)
+            })
+        }
+        rebuild()
+        fun save(list: List<String>) {
+            prefs().edit().putString(PREF_NAV_ORDER, list.joinToString(",")).apply()
+            if (list.take(4) != before) {
+                LogBuf.add("Bundmenu: " + list.take(4).joinToString(", ") { NAV_FUNCS[it] ?: it })
+                if (!tweakOn(TW_NAV)) prefs().edit().putBoolean(TW_NAV, true).apply()
+                web.reload()
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Indret bundmenu")
+            .setView(ScrollView(this).apply { addView(col) })
+            .setPositiveButton("Gem") { _, _ -> save(order) }
+            .setNeutralButton("Som Cicero") { _, _ -> save(NAV_FUNCS.keys.toList()) }
+            .setNegativeButton("Annuller", null)
+            .track()
+    }
+
     private fun showSettings() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1101,6 +1177,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             TW_TAGS to "Tags-knap i Ciceros bjælke",
             TW_FLY to "Swipe fly-in væk (mod højre)",
             TW_CAM to "NFClibras kamera i materialenummer-felter",
+            TW_NAV to "Egen bundmenu",
         )
         val switches = tweaks.map { (key, label) ->
             switch(label, tweakOn(key)) { on ->
@@ -1109,6 +1186,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 tweaksChanged = true
             }
         }
+        col.addView(TextView(this).apply {
+            text = "Indret bundmenu …"
+            textSize = 16f
+            setTextColor(pal.blue)
+            setPadding(dp(24), dp(8), 0, dp(10))
+            setOnClickListener { showNavEditor() }
+        })
         // Alle på én gang – fx før en fejl meldes til Systematic
         col.addView(TextView(this).apply {
             fun label() = if (switches.any { it.isChecked }) "Slå alle fra" else "Slå alle til"
@@ -1478,8 +1562,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
-        // Midlertidig fejlsøgning til den flytbare bundmenu
-        runTweak(NAV_PROBE_JS)
+        if (tweakOn(TW_NAV)) runTweak(NAV_LAYOUT_JS.replace("%ORDER%", navOrder().take(4).joinToString(",", "[", "]") { "'" + it + "'" }))
         pushPageColors()
         handler.postDelayed({ detectCiceroTheme() }, 500)
     }
@@ -2750,78 +2833,197 @@ private val CAMERA_SWAP_JS = """
 """
 
 /**
- * Fejlsøgning til bundmenuen: skriver én gang, hvordan Ciceros bundmenu og "…"-menuen er bygget op
- * (elementtyper, adresser, ikon- og funktionsnavne – ingen lånerdata), så de kan gøres flytbare.
+ * Egen bundmenu: de fire funktioner, brugeren har valgt (Indstillinger → Indret bundmenu), står i bjælken.
+ * Ciceros egne knapper skjules, og app'ens kopier trykker på dem – eller åbner "…"-menuen usynligt og trykker på
+ * punktet dér. Funktioner, der er flyttet ud af bjælken, lægges øverst i "…"-menuen. Står bjælken som Ciceros
+ * egen, gøres ingenting.
  */
-private val NAV_PROBE_JS = """
+private val NAV_LAYOUT_JS = """
 (function () {
-  if (window.__cnfcNavProbe) return;
-  window.__cnfcNavProbe = true;
+  if (window.__cnfcNav) return;
+  window.__cnfcNav = true;
+  var ORDER = %ORDER%;
+  var DEFAULT = ['catalogue', 'patron', 'circulation', 'reservations'];
+  if (ORDER.join() === DEFAULT.join()) return;
   var H = window.__cnfc, said = {};
-  function log(m) { if (said[m]) return; said[m] = 1; try { CiceroNFC.tweak(m.slice(0, 900)); } catch (e) {} }
-  function cls(el) { var c = (typeof el.className === 'string' ? el.className : '').trim().split(/\s+/).filter(function (x) { return x && !/^ng-/.test(x); }).slice(0, 3).join('.'); return el.tagName.toLowerCase() + (c ? '.' + c : ''); }
-  function icon(el) {
-    var ic = el.querySelector('mat-icon, [data-mat-icon-name], [svgicon], [fonticon], img');
-    if (!ic) return el.querySelector('svg') ? 'svg' : '-';
-    return [ic.textContent, ic.getAttribute('data-mat-icon-name'), ic.getAttribute('svgicon'), ic.getAttribute('fonticon'), ic.getAttribute('src')]
-      .filter(function (x) { return x && x.trim(); }).join('/').replace(/\s+/g, ' ').trim().slice(0, 40) || ic.tagName.toLowerCase();
+  function log(m) { if (said[m]) return; said[m] = 1; try { CiceroNFC.tweak(m); } catch (e) {} }
+  var F = {
+    catalogue: { label: 'Katalog', href: '/catalogue', bar: true },
+    patron: { label: 'Lånere', href: '/patron-administration', bar: true },
+    circulation: { label: 'Udlån & aflevering', href: '/circulation', bar: true },
+    reservations: { label: 'Reservationer & bookinger', href: '/reservations', bar: true },
+    accession: { label: 'Indkøb', href: '/accession' },
+    tasks: { label: 'Opgaver', href: '/task-administration' },
+    news: { label: 'Nyheder', href: '/news' },
+    help: { label: 'Hjælp' },
+    admin: { label: 'Admin', href: '/administration' }
+  };
+  ORDER = ORDER.filter(function (k) { return F[k]; }).slice(0, 4);
+  var icons = {}, hiding = false, harvested = false, dark = null;
+  function footer() { return document.querySelector('footer.footer-touch'); }
+  function origA(k) {
+    var f = footer();
+    return f && F[k].href ? f.querySelector('a.menu-icon-wrapper[href="' + F[k].href + '"]:not([data-cnfc-nav] *)') : null;
   }
-  function desc(el) {
-    var href = el.getAttribute('href') || el.getAttribute('routerlink') || el.getAttribute('ng-reflect-router-link') || '';
-    var lab = [el.getAttribute('aria-label'), el.getAttribute('title'), el.getAttribute('mattooltip')].filter(Boolean).join('/');
-    var txt = H.textOf(el).slice(0, 25);
-    return cls(el) + (href ? ' href=' + href.replace(/\d{4,}/g, '#') : '') + (lab ? ' lbl=' + lab : '') + (txt ? ' txt=' + txt : '') + ' ikon=' + icon(el) +
-      (el.getAttribute('aria-current') ? ' current' : '') + (/active/.test(el.className) ? ' aktiv' : '');
+  function moreBtn() { var f = footer(); return f && f.querySelector('button.mat-mdc-menu-trigger'); }
+  // Fælles forælder for Ciceros fire knapper, og hver knaps "plads" i den
+  function layout() {
+    var as = DEFAULT.map(origA);
+    if (as.some(function (a) { return !a; })) return null;
+    var p = as[0].parentElement;
+    while (p && !as.every(function (a) { return p.contains(a); })) p = p.parentElement;
+    if (!p) return null;
+    var slots = as.map(function (a) { var e = a; while (e.parentElement !== p) e = e.parentElement; return e; });
+    return { parent: p, slots: slots, byKey: function (k) { var i = DEFAULT.indexOf(k); return i < 0 ? null : slots[i]; } };
   }
-  function bar() {
-    var list = document.elementsFromPoint(innerWidth / 2, innerHeight - 3);
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].closest('.cdk-overlay-container, [data-cnfc-bar]')) continue;
-      var best = null;
-      for (var e = list[i]; e && e !== document.body; e = e.parentElement) {
-        var r = e.getBoundingClientRect();
-        if (r.bottom >= innerHeight - 2 && r.width >= innerWidth * 0.9 && r.height < innerHeight / 4) best = e;
-      }
-      return best;
+  function menuPanel() { return document.querySelector('.cdk-overlay-container .mat-mdc-menu-panel'); }
+  function menuItem(k) {
+    var p = menuPanel();
+    if (!p) return null;
+    var its = p.querySelectorAll('.mat-mdc-menu-item:not([data-cnfc-nav])');
+    for (var i = 0; i < its.length; i++) {
+      var it = its[i];
+      if ((F[k].href && it.getAttribute('href') === F[k].href) || it.getAttribute('aria-label') === F[k].label) return it;
     }
     return null;
   }
-  function probeBar() {
-    if (!H.cicero()) return;
-    var b = bar();
-    if (!b) return;
-    var items = b.querySelectorAll('a, button, [role=button], [role=tab], [routerlink]');
-    var out = [], seen = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      if (seen.some(function (s) { return s.contains(it); })) continue;
-      seen.push(it);
-      out.push((out.length + 1) + ') ' + desc(it));
-    }
-    var chain = [], e = b;
-    for (var k = 0; k < 3 && e && e !== document.body; k++, e = e.parentElement) chain.push(cls(e));
-    // Én linje pr. knap (loggen klipper lange linjer)
-    log('Bundmenu: ' + chain.join(' < ') + ' – ' + out.length + ' knapper');
-    out.forEach(function (o) { log('Bundmenu ' + o); });
+  function closeMenu() { var b = document.querySelector('.cdk-overlay-backdrop'); if (b) b.click(); }
+  // "…"-menuen åbnes usynligt, og der trykkes på punktet (som om man selv gjorde det)
+  function viaMenu(k, then) {
+    var mb = moreBtn();
+    if (!mb) { log('Bundmenu: fandt ikke "Flere handlinger"'); return; }
+    var st = document.createElement('style');
+    st.textContent = '.cdk-overlay-container { opacity: 0 !important; }';
+    document.head.appendChild(st);
+    hiding = true;
+    mb.click();
+    H.waitFor(function () { return menuPanel(); }, 1500).then(function () {
+      then();
+      setTimeout(function () { if (menuPanel()) closeMenu(); }, 120);
+      setTimeout(function () { st.remove(); hiding = false; }, 450);
+    });
   }
-  function probeMenu() {
-    var panels = document.querySelectorAll('.cdk-overlay-container [role=menu], .cdk-overlay-container .mat-mdc-menu-panel, .cdk-overlay-container .mat-menu-panel');
-    for (var p = 0; p < panels.length; p++) {
-      var items = panels[p].querySelectorAll('[role=menuitem], button, a');
-      var out = [], seen = [];
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        if (seen.some(function (s) { return s.contains(it); })) continue;
-        seen.push(it);
-        out.push(desc(it));
+  function harvest() {
+    if (harvested) return;
+    harvested = true;
+    viaMenu(null, function () { grabIcons(); });
+  }
+  function grabIcons() {
+    Object.keys(F).forEach(function (k) {
+      if (F[k].bar) return;
+      var it = menuItem(k), ic = it && it.querySelector('mat-icon');
+      if (ic) icons[k] = ic.cloneNode(true);
+    });
+    sync();
+  }
+  function go(k) {
+    if (F[k].bar) { var a = origA(k); if (a) a.click(); return; }
+    viaMenu(k, function () {
+      var it = menuItem(k);
+      if (it) it.click(); else log('Bundmenu: fandt ikke "' + F[k].label + '" i "…"-menuen');
+    });
+  }
+  function strip(el) {
+    [el].concat([].slice.call(el.querySelectorAll('*'))).forEach(function (x) {
+      x.removeAttribute('href'); x.removeAttribute('id'); x.removeAttribute('routerlink');
+    });
+  }
+  function blue() { return dark ? '#3098E8' : '#0078D3'; }
+  function makeBtn(k, L) {
+    // Udseendet lånes fra en af Ciceros egne knapper (en, der ikke er valgt)
+    var here = location.pathname, tmpl = L.slots[0];
+    for (var i = 0; i < DEFAULT.length; i++) { if (here.indexOf(F[DEFAULT[i]].href) !== 0) { tmpl = L.slots[i]; break; } }
+    var c = tmpl.cloneNode(true);
+    strip(c);
+    c.setAttribute('data-cnfc-nav', k);
+    c.style.display = '';
+    c.style.cursor = 'pointer';
+    var a = c.matches('a') ? c : c.querySelector('a') || c;
+    a.setAttribute('aria-label', F[k].label);
+    a.setAttribute('role', 'button');
+    c.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); go(k); }, true);
+    return c;
+  }
+  function refresh(c, L) {
+    var k = c.getAttribute('data-cnfc-nav');
+    if (F[k].bar) {
+      // Samme udseende som Ciceros egen (skjulte) knap – også når den er valgt
+      var o = L.byKey(k);
+      var sig = o.className + '|' + o.innerHTML;
+      if (c.__sig !== sig) {
+        c.__sig = sig;
+        c.className = o.className;
+        c.innerHTML = o.innerHTML;
+        strip(c);
+        c.setAttribute('data-cnfc-nav', k);
       }
-      if (!out.length) continue;
-      log('Menu: ' + cls(panels[p]) + ' – ' + out.length + ' punkter');
-      out.forEach(function (o, n) { log('Menu ' + (n + 1) + ') ' + o); });
+      return;
     }
+    var ic = c.querySelector('mat-icon'), want = icons[k];
+    if (want && ic && ic.__cnfcFor !== want) {
+      var n = want.cloneNode(true); n.__cnfcFor = want;
+      ic.replaceWith(n);
+    }
+    var active = F[k].href ? location.pathname.indexOf(F[k].href) === 0 : false;
+    var mark = active ? 'inset 0 -3px 0 ' + blue() : '';
+    if (c.style.boxShadow !== mark) c.style.boxShadow = mark;
   }
-  setTimeout(probeBar, 1500);
-  H.onChange(function () { probeBar(); probeMenu(); }, '[data-cnfc], [data-cnfc-bar]');
+  function sync() {
+    if (!H.cicero()) return;
+    var L = layout();
+    if (!L) { if (footer()) log('Bundmenu: fandt ikke Ciceros fire knapper – egen bundmenu ikke sat op'); return; }
+    var ic0 = L.slots[0].querySelector('mat-icon'), name = ic0 ? (ic0.getAttribute('svgicon') || ic0.getAttribute('data-mat-icon-name') || '') : '';
+    var isDark = /darkmode/.test(name);
+    if (dark !== null && dark !== isDark) { icons = {}; harvested = false; }
+    dark = isDark;
+    L.slots.forEach(function (s) { if (s.style.display !== 'none') s.style.display = 'none'; });
+    var ours = [].filter.call(L.parent.children, function (e) { return e.hasAttribute('data-cnfc-nav'); });
+    if (ours.map(function (e) { return e.getAttribute('data-cnfc-nav'); }).join() !== ORDER.join()) {
+      ours.forEach(function (e) { e.remove(); });
+      ORDER.forEach(function (k) { L.parent.insertBefore(makeBtn(k, L), L.slots[0]); });
+      log('Bundmenu indrettet: ' + ORDER.map(function (k) { return F[k].label; }).join(', '));
+    }
+    [].forEach.call(L.parent.children, function (c) { if (c.hasAttribute('data-cnfc-nav')) refresh(c, L); });
+    if (!harvested && ORDER.some(function (k) { return !F[k].bar && !icons[k]; })) setTimeout(harvest, 600);
+    syncMenu();
+  }
+  // "…"-menuen: funktioner, der står i bjælken, skjules; Ciceros knapper, der er flyttet ud, lægges øverst
+  function syncMenu() {
+    var p = menuPanel();
+    if (!p || hiding) return;
+    Object.keys(F).forEach(function (k) {
+      if (F[k].bar) return;
+      var it = menuItem(k);
+      if (!it) return;
+      if (!icons[k]) { var ic = it.querySelector('mat-icon'); if (ic) icons[k] = ic.cloneNode(true); }
+      var inBar = ORDER.indexOf(k) >= 0;
+      if (inBar && it.style.display !== 'none') it.style.display = 'none';
+    });
+    var out = DEFAULT.filter(function (k) { return ORDER.indexOf(k) < 0; });
+    var tmpl = p.querySelector('a.mat-mdc-menu-item:not([data-cnfc-nav])');
+    if (!tmpl) return;
+    var first = tmpl.parentElement.firstElementChild;
+    out.slice().reverse().forEach(function (k) {
+      if (p.querySelector('[data-cnfc-nav="' + k + '"]')) return;
+      var c = tmpl.cloneNode(true);
+      strip(c);
+      c.style.display = '';
+      c.setAttribute('data-cnfc-nav', k);
+      c.setAttribute('aria-label', F[k].label);
+      var txt = c.querySelector('.mat-mdc-menu-item-text') || c.querySelector('span');
+      if (txt) txt.textContent = F[k].label;
+      var o = origA(k), oic = o && o.querySelector('mat-icon'), ic = c.querySelector('mat-icon');
+      if (oic && ic) ic.replaceWith(oic.cloneNode(true));
+      c.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        closeMenu();
+        setTimeout(function () { var a = origA(k); if (a) a.click(); }, 50);
+      }, true);
+      tmpl.parentElement.insertBefore(c, tmpl.parentElement.firstElementChild);
+    });
+  }
+  sync();
+  H.onChange(sync, '[data-cnfc-nav]');
 })();
 """
 
