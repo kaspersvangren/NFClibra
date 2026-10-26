@@ -1562,6 +1562,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_TAGS)) runTweak(TAGS_BUTTON_JS)
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
+        if (tweakOn(TW_NAV)) runTweak(NAV_HOVER_JS)
         if (tweakOn(TW_NAV)) runTweak(NAV_LAYOUT_JS.replace("%ORDER%", navOrder().take(4).joinToString(",", "[", "]") { "'" + it + "'" }))
         pushPageColors()
         handler.postDelayed({ detectCiceroTheme() }, 500)
@@ -3024,6 +3025,27 @@ private val NAV_LAYOUT_JS = """
   }
   sync();
   H.onChange(sync, '[data-cnfc-nav]');
+})();
+"""
+
+/**
+ * Ciceros bundmenu farver et ikon blåt ved "hover" (lavet til mus). På en touchskærm bliver hover hængende, hvor
+ * fingeren sidst var, så flere ikoner kunne stå blå. Hover-klassen fjernes, så kun den valgte funktion er blå.
+ */
+private val NAV_HOVER_JS = """
+(function () {
+  if (window.__cnfcNavHover) return;
+  window.__cnfcNavHover = true;
+  var H = window.__cnfc, logged = false;
+  function sync() {
+    var f = document.querySelector('footer.footer-touch');
+    if (!f) return;
+    var els = f.querySelectorAll('.icon-wrapper-hover-enabled');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('icon-wrapper-hover-enabled');
+    if (els.length && !logged) { logged = true; try { CiceroNFC.tweak('Hover-farve i bundmenuen slået fra (' + els.length + ' knapper)'); } catch (e) {} }
+  }
+  sync();
+  H.onChange(sync);
 })();
 """
 
