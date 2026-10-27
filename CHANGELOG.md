@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – Guidens side om tal-tastaturet er kortere og tydeligere (teksten blev klippet af). CQL-kameraet fjerner en tjekboks læst som et enkelt tegn foran et navn (fx "D Mosegaard Amdisen, Eva").
 - **0.6.3** (117) – Guiden viser sidetal (fx 9 / 15) i stedet for prikker, og teksterne om CQL-kameraet og bundmenuen er gjort tydeligere. Menuen med de tre prikker skrives ••• som Ciceros eget ikon. Pilen for nyt billede står i midten af udløseren.
 - **0.6.2** (116) – Kameraerne har fået knapper som telefonens eget kamera, ens i begge kameraer og nederst ved tommelfingeren: zoom (0,5× hvis telefonen kan, 1×, 2×) i midten, og under den lyn (lys til/fra) til venstre, udløseren i midten (CQL-kameraet) og ✕ (luk) til højre. Billedet selv er frit for knapper.
 - **0.6.1** (115) – CQL-kameraet: udløseren er en rund knap nederst på billedet som i telefonens kamera (↺ for nyt billede). Tjekbokse læst som "D", "0" eller "O" springes bedre over, og "Efternavn, Fornavn" foreslås som Forfatter. CQL-feltet: kamera-ikonet står til højre for historik-ikonet i Ciceros eget udseende og med samme luft som i Låner-feltet, og et blåt RFID-ikon viser, at RFID-opslaget er slået til (tryk for at slå det fra og til). RFID-ikonet i bjælken er blåt, mens opslaget står klar.

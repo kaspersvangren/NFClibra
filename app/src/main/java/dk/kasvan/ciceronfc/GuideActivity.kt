@@ -811,10 +811,9 @@ class GuideActivity : LockedScreen() {
         },
         Page(
             "Tal-tastatur i felterne",
-            "Låner, telefonnumre og Materialenummer får et lille tastatur med tal, slet og Enter. Den ekstra tast er C (Låner), " +
-                "+ (telefon) eller kamera (Materialenummer): kameraet læser nummeret som stregkode eller tal og taster det ind – " +
-                "også i materialesøgningen. Ciceros eget kamera-ikon i feltet åbner samme kamera. Tryk på den blå knap med nummeret. " +
-                "ABC giver telefonens eget tastatur.",
+            "Låner, telefon og Materialenummer får et tastatur med tal. Ekstratasten er C ved Låner, + ved telefon og et kamera " +
+                "ved Materialenummer. Kameraet læser stregkoden eller tallene og skriver nummeret ind for dig. ABC skifter til " +
+                "telefonens almindelige tastatur.",
         ) {
             val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
             val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

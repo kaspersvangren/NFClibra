@@ -315,7 +315,10 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     /** Tekst, der kan søges på – eller null for feltnavne, materialetyper, støj og fejllæste numre */
     private fun cleanText(raw: String): String? {
-        val t = raw.replace(Regex("\\s+"), " ").trim().trim(':', ';', ',', '-', '–', '•', '|', '*', '/', ' ')
+        var t = raw.replace(Regex("\\s+"), " ").trim().trim(':', ';', ',', '-', '–', '•', '|', '*', '/', ' ')
+        // Tjekboks læst som et enkelt tegn foran et navn ("D Mosegaard Amdisen, Eva"): ingen navne begynder sådan
+        val rest = t.drop(2)
+        if (t.length > 2 && t[1] == ' ' && t[0] in BOX_CHARS && NAME.matches(rest)) t = rest
         if (t.length !in 2..150) return null
         val k = normKey(t)
         if (k.length < 2 || k in STOP_WORDS) return null
