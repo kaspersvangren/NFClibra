@@ -3493,8 +3493,17 @@ private val STICKY_BUTTONS_JS = """
       bar = { row: row, target: target, pill: pill, sig: null };
       log('Knaprække fundet (' + names(row) + ')');
     }
-    // Skjult sammen med søgekortet (fx en anden fane)
-    var show = vis(bar.target.parentElement);
+    // Cicero har tegnet en del af siden om og taget pillen med (fx efter en søgning), mens dens egen række
+    // stadig er skjult: pillen sættes ind igen – ellers var både pillen og rækken væk
+    if (!bar.pill.isConnected) {
+      hostFor(bar.target).appendChild(bar.pill);
+      bar.sig = null;
+      log('Nulstil/Søg-pillen sat ind igen (Cicero havde tegnet siden om)');
+    }
+    // Skjult sammen med søgekortet (fx en anden fane). Målt på selve boksene – "offsetParent" er tom for
+    // faste elementer, så den kunne skjule pillen, selv om kortet var fremme
+    var tp = bar.target.parentElement;
+    var show = !!tp && tp.getClientRects().length > 0 && getComputedStyle(tp).visibility !== 'hidden';
     bar.pill.style.display = show ? 'flex' : 'none';
     if (!show) return;
     refresh(bar);
