@@ -828,7 +828,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             return
         }
         if (requestCode == cqlRequestCode) {
-            if (resultCode == RESULT_OK) data?.getStringExtra(ScanActivity.EXTRA_VALUE)?.let { onCqlScanned(it) }
+            if (resultCode == RESULT_OK) data?.getStringExtra(CqlScanActivity.EXTRA_CQL)?.let { onCqlScanned(it) }
             return
         }
         if (requestCode != unlockRequestCode) return
@@ -1500,9 +1500,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 openingOwn()
                 @Suppress("DEPRECATION")
                 startActivityForResult(
-                    Intent(this@MainActivity, ScanActivity::class.java)
-                        .putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette)
-                        .putExtra(ScanActivity.EXTRA_MODE, ScanActivity.MODE_CQL),
+                    Intent(this@MainActivity, CqlScanActivity::class.java)
+                        .putExtra(CqlScanActivity.EXTRA_DARK, pal === darkPalette),
                     cqlRequestCode,
                 )
             }
