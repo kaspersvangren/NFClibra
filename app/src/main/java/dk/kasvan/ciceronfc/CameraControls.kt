@@ -34,6 +34,7 @@ class CameraControls(
 
     private var controller: LifecycleCameraController? = null
     private var torch = false
+    private var zoom = defaultZoom
     private val torchIcon = ImageView(activity)
     private val chips = LinkedHashMap<Float, TextView>()
     private val zoomRow = LinearLayout(activity).apply {
@@ -147,12 +148,14 @@ class CameraControls(
                 placeChip(t)
             }
             zoomRow.visibility = if (levels.size > 1) View.VISIBLE else View.INVISIBLE
-            setZoom(if (defaultZoom in levels) defaultZoom else 1f)
+            // Samme zoom som før, hvis kameraet startes igen (fx når telefonen vendes)
+            setZoom(if (zoom in levels) zoom else 1f)
             if (torch) c.enableTorch(true)
         }, ContextCompat.getMainExecutor(activity))
     }
 
     fun setZoom(z: Float) {
+        zoom = z
         controller?.setZoomRatio(z)
         for ((level, t) in chips) {
             val on = level == z

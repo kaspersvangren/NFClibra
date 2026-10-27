@@ -231,6 +231,14 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         super.onConfigurationChanged(newConfig)
         arrange()
         rebuildPicks()
+        // Kameraet startes forfra, så det leverer et billede, der vender rigtigt – ellers sender det stadig det stående
+        // billede, som beskæres i den brede ramme (ser zoomet ud, og fotoet bliver ikke det, man så)
+        if (controller != null) {
+            try { controller?.unbind() } catch (_: Exception) {}
+            preview.controller = null
+            controller = null
+            startCamera()
+        }
     }
 
     private fun startCamera() {
