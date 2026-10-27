@@ -890,6 +890,101 @@ class GuideActivity : LockedScreen() {
             box
         },
         Page(
+            "Søg med kamera eller bog",
+            "I katalogsøgningen har CQL-feltet et kamera. Tag et billede af bogen eller skærmen, og tryk på det, du vil søge på – " +
+                "titel, forfatter, faust eller ISBN. Under Valgt sætter du typen, og så søger du. Holder du en bog mod telefonen, " +
+                "mens CQL-feltet er fremme, slås den op med det samme.",
+        ) {
+            val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+            val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+            // Et "billede" af et omslag med de fundne linjer markeret
+            fun mark(t: String, size: Float, color: Int) = text(t, size, color, true).apply {
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                background = rounded(Color.argb(40, 255, 255, 255), 6, Color.WHITE)
+            }
+            val author = mark("Rane Willerslev", 12f, Color.WHITE)
+            val title = mark("Ekspeditioner", 18f, Color.parseColor("#FFD400"))
+            val isbn = mark("ISBN 9788702289114", 11f, Color.WHITE)
+            val photo = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                background = rounded(Color.parseColor("#2B4A6F"), 10)
+                setPadding(dp(12), dp(14), dp(12), dp(14))
+                addView(author)
+                addView(title, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(10) })
+                addView(isbn, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(18) })
+            }
+            fun chosen(t: String, type: String) = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = rounded(tc.card, 8)
+                setPadding(dp(10), dp(6), dp(8), dp(6))
+                addView(text(t, 12f), LinearLayout.LayoutParams(0, WRAP, 1f))
+                addView(text(type, 11f, tc.blue, true).apply { background = rounded(Color.TRANSPARENT, 12, tc.blue); setPadding(dp(8), dp(3), dp(8), dp(3)) })
+                alpha = 0f
+            }
+            val r1 = chosen("Ekspeditioner", "Titel")
+            val r2 = chosen("Rane Willerslev", "Forfatter")
+            val search = text("Søg (2 valgte)", 13f, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(tc.blue, 16)
+                setPadding(dp(10), dp(7), dp(10), dp(7))
+                alpha = 0f
+            }
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(photo, LinearLayout.LayoutParams(MATCH, WRAP))
+                addView(r1, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) })
+                addView(r2, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+                addView(search, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+                layoutParams = FrameLayout.LayoutParams(dp(260), WRAP)
+            }
+            fun pick(v: TextView, on: Boolean) {
+                v.background = if (on) rounded(Color.argb(150, 48, 152, 232), 6, tc.blue) else rounded(Color.argb(40, 255, 255, 255), 6, Color.WHITE)
+            }
+            loop(900) { n ->
+                when (n % 7) {
+                    0 -> { pick(title, false); pick(author, false); r1.alpha = 0f; r2.alpha = 0f; search.alpha = 0f }
+                    1 -> { pick(title, true); r1.animate().alpha(1f).setDuration(250).start() }
+                    2 -> { pick(author, true); r2.animate().alpha(1f).setDuration(250).start() }
+                    3 -> search.animate().alpha(1f).setDuration(250).start()
+                }
+            }
+            box
+        },
+        Page(
+            "Din egen bundmenu",
+            "Under Indstillinger → Indret bundmenu vælger du, hvilke fire funktioner der står i Ciceros bundmenu, og i hvilken " +
+                "rækkefølge – også Opgaver, Nyheder, Hjælp og de andre fra …-menuen. Det, du flytter ud, ligger øverst under ….",
+        ) {
+            val names = listOf("Katalog", "Lånere", "Udlån", "Reserv.")
+            val slots = names.map { t ->
+                text(t, 11f, tc.fg, true).apply {
+                    gravity = Gravity.CENTER
+                    background = rounded(tc.key, 8)
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                }
+            }
+            val bar = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = rounded(tc.card, 12)
+                setPadding(dp(6), dp(6), dp(6), dp(6))
+                slots.forEach { addView(it, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), 0, dp(3), 0) }) }
+                addView(text("…", 18f, tc.fg, true).apply { gravity = Gravity.CENTER; setPadding(dp(8), 0, dp(6), 0) })
+                layoutParams = FrameLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            // Reservationer byttes ud med Hjælp – og tilbage igen
+            loop(1600) { n ->
+                val last = slots[3]
+                last.animate().alpha(0f).setDuration(200).withEndAction {
+                    last.text = if (n % 2 == 0) "Hjælp" else "Reserv."
+                    last.setTextColor(if (n % 2 == 0) tc.blue else tc.fg)
+                    last.animate().alpha(1f).setDuration(200).start()
+                }.start()
+            }
+            bar
+        },
+        Page(
             "Kun NFC?",
             "Vil du kun bruge NFClibra som RFID-læser? Under Indstillinger kan hver ændring af Cicero slås til og fra for sig – eller alle på én gang. Slår du dem alle fra, ser Cicero ud præcis som normalt. Her indretter du også bundmenuen: hvilke fire funktioner der står i bjælken.",
         ) {
