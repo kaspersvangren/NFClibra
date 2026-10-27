@@ -122,19 +122,25 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          mkdir -p /tmp/logbranch
-          cp build.log /tmp/logbranch/build.log 2>/dev/null || echo "ingen log" > /tmp/logbranch/build.log
+          REPO="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          cp build.log /tmp/build.log 2>/dev/null || echo "ingen log" > /tmp/build.log
+          # Loggen lægges oven på den forrige (ikke en ny historik, der overskriver grenen – det afviste GitHub nogle gange)
+          if ! git clone -q --depth 1 --branch build-log "$REPO" /tmp/logbranch 2>/dev/null; then
+            mkdir -p /tmp/logbranch && cd /tmp/logbranch && git init -q -b build-log && cd - >/dev/null
+          fi
+          cp /tmp/build.log /tmp/logbranch/build.log
           echo "${{ job.status }} ${GITHUB_SHA} run ${{ github.run_number }}" > /tmp/logbranch/status.txt
           cd /tmp/logbranch
-          git init -q -b build-log
           git config user.name "build-bot"
           git config user.email "build-bot@users.noreply.github.com"
-          git add .
-          git commit -qm "Byggelog ${GITHUB_SHA::7}"
+          git add -A
+          git commit -qm "Byggelog ${GITHUB_SHA::7} (run ${{ github.run_number }})"
           # Op til tre forsøg; fejlbeskeden skrives i Actions-loggen, hvis alle tre fejler
           for i in 1 2 3; do
-            if git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" build-log 2>push.err; then exit 0; fi
+            if git push "$REPO" HEAD:build-log 2>push.err; then exit 0; fi
             echo "Forsøg $i på at gemme byggeloggen fejlede:"; sed 's/x-access-token:[^@]*@/***@/' push.err
             sleep $((i * 5))
+            # Er grenen ændret imens, lægges loggen oven på den nye udgave
+            git pull -q --rebase -X theirs "$REPO" build-log 2>/dev/null || true
           done
           exit 1
