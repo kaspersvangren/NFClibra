@@ -957,8 +957,8 @@ class GuideActivity : LockedScreen() {
         Page(
             "Din egen bundmenu",
             "Under Indstillinger → Indret bundmenu vælger du, hvilke fire funktioner der står i Ciceros bundmenu, og i hvilken " +
-                "rækkefølge – også Opgaver, Nyheder, Hjælp og de andre fra menuen med de tre prikker. Det, du flytter ud af " +
-                "bundmenuen, finder du øverst i den menu.",
+                "rækkefølge – også dem, der ellers ligger under •••, fx Opgaver, Nyheder og Hjælp. Det, du flytter ud af " +
+                "bundmenuen, ligger øverst under ••• i stedet.",
         ) {
             val names = listOf("Katalog", "Lånere", "Udlån", "Reserv.")
             val slots = names.map { t ->

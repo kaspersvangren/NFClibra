@@ -1086,7 +1086,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             col.removeAllViews()
             order.forEachIndexed { i, k ->
                 if (i == 0 || i == 4) col.addView(TextView(this).apply {
-                    text = if (i == 0) "I bundmenuen (fra venstre)" else "I menuen med de tre prikker"
+                    text = if (i == 0) "I bundmenuen (fra venstre)" else "Under •••"
                     textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                     setTextColor(pal.blue)
@@ -1112,7 +1112,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 })
             }
             col.addView(TextView(this).apply {
-                text = "\"Produkter & links\" ligger altid i menuen med de tre prikker"
+                text = "\"Produkter & links\" ligger altid under ••• i bundmenuen"
                 textSize = 13f
                 setTextColor(pal.sub)
                 setPadding(0, dp(10), 0, 0)
