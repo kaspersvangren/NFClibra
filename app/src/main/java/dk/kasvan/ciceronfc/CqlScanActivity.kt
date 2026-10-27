@@ -49,7 +49,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     companion object {
         const val EXTRA_DARK = "dark"
         const val EXTRA_CQL = "cql"
-        private val TEXT_TYPES = linkedMapOf("free" to "Fritekst", "title" to "Titel", "creator" to "Forfatter", "dk5" to "DK5", "subject" to "Emneord")
+        private val TEXT_TYPES = linkedMapOf("free" to "Fritekst", "title" to "Titel", "creator" to "Forfatter", "dk5" to "DK5", "subject" to "Emneord", "cql" to "CQL")
         private val NUM_TYPES = linkedMapOf("faust" to "Faust", "bmn" to "Materialenr.", "isbn" to "ISBN")
         /** Ord, der aldrig er en søgning, når de står alene: Ciceros feltnavne og materialetyper (sammenligningsnøgler) */
         private val STOP_WORDS = setOf(
@@ -69,7 +69,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     }
 
     /** Noget, der er fundet i billedet: en tekstlinje eller et nummer (numType sat) */
-    private class Item(val text: String, val rect: RectF, val numType: String?) { var pick: Pick? = null }
+    private class Item(val text: String, val rect: RectF, val numType: String?, val cql: Boolean = false) { var pick: Pick? = null }
     private class Pick(var text: String, var type: String, var item: Item?)
 
     private lateinit var tc: ToolColors
@@ -263,53 +263,78 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
      * "O brother" har almindelig ordafstand og bliver stående. Numre tages fra; resten er tekstlinjer.
      */
     private fun addText(t: Text, out: MutableList<Item>) {
-        for (block in t.textBlocks) for (line in block.lines) {
-            val els = line.elements.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.left }
-            if (els.isEmpty()) continue
-            val h = els.map { it.boundingBox!!.height() }.sorted()[els.size / 2].coerceAtLeast(1)
-            val segs = ArrayList<MutableList<Pair<String, Rect>>>()
-            var cur = ArrayList<Pair<String, Rect>>()
-            var prevRight = Int.MIN_VALUE
-            for ((i, e) in els.withIndex()) {
-                var txt = e.text
-                var box = Rect(e.boundingBox!!)
-                // Tjekboks klistret på ordet ("OWillerslev"): første tegn står med tydelig luft til resten
-                val sym = e.symbols
-                if (txt.length > 1 && txt[0] in BOX_CHARS && sym.size >= 2) {
-                    val a = sym[0].boundingBox
-                    val b = sym[1].boundingBox
-                    if (a != null && b != null && b.left - a.right > h * 0.35f) {
-                        txt = txt.substring(1)
-                        box = Rect(b.left, box.top, box.right, box.bottom)
-                    }
+        for (block in t.textBlocks) {
+            // En CQL-linje (fx Ciceros egen "CQL: (ti=… AND fo=…)" på en skærm) tages hel – også når den er brudt over flere linjer
+            val lines = block.lines
+            val first = lines.firstOrNull() ?: continue
+            if (CqlText.looksCql(first.text)) {
+                // Linjerne under hører med, så længe de ligner fortsættelsen af søgningen
+                var n = 1
+                while (n < lines.size && CqlText.continues(lines[n].text)) n++
+                val q = CqlText.repair(lines.take(n).joinToString(" ") { it.text })
+                val box = first.boundingBox?.let { RectF(it) }
+                if (q.isNotEmpty() && box != null) {
+                    lines.take(n).forEach { l -> l.boundingBox?.let { box.union(RectF(it)) } }
+                    out += Item(q, box, null, cql = true)
+                    lines.drop(n).forEach { addLine(it, out) }
+                    continue
                 }
-                // Tjekboks som eget "ord" foran teksten: sikre tegn (fx "D", "0") med bare lidt luft; "O" kun med tydelig
-                // luft eller lav sikkerhed i læsningen ("O brother" har almindelig ordafstand og står stille)
-                if (i == 0 && txt.length == 1 && txt[0] in BOX_CHARS && els.size > 1) {
-                    val gap = els[1].boundingBox!!.left - box.right
-                    if ((txt[0] in SURE_BOX && gap > h * 0.15f) || gap > h * 0.5f || e.confidence < 0.6f) continue
-                }
-                if (prevRight != Int.MIN_VALUE && box.left - prevRight > h * 1.3f) { segs += cur; cur = ArrayList() }
-                cur += txt to box
-                prevRight = box.right
             }
-            if (cur.isNotEmpty()) segs += cur
-            for (seg in segs) {
-                val text = seg.joinToString(" ") { it.first }.trim()
-                val r = RectF(seg.first().second)
-                seg.forEach { r.union(RectF(it.second)) }
-                if (seg.size == 1 && text.length == 1) continue
-                val isbnHint = text.contains("ISBN", ignoreCase = true)
-                var hadNumber = false
-                for (m in DIGITS.findAll(text)) {
-                    val v = m.value.filter { it.isDigit() }
-                    val type = numType(v, isbnHint) ?: continue
-                    out += Item(v, RectF(r), type)
-                    hadNumber = true
+            for (line in lines) addLine(line, out)
+        }
+    }
+
+    private fun addLine(line: Text.Line, out: MutableList<Item>) {
+        if (CqlText.looksCql(line.text)) {
+            val q = CqlText.repair(line.text)
+            val box = line.boundingBox
+            if (q.isNotEmpty() && box != null) { out += Item(q, RectF(box), null, cql = true); return }
+        }
+        val els = line.elements.filter { it.boundingBox != null }.sortedBy { it.boundingBox!!.left }
+        if (els.isEmpty()) return
+        val h = els.map { it.boundingBox!!.height() }.sorted()[els.size / 2].coerceAtLeast(1)
+        val segs = ArrayList<MutableList<Pair<String, Rect>>>()
+        var cur = ArrayList<Pair<String, Rect>>()
+        var prevRight = Int.MIN_VALUE
+        for ((i, e) in els.withIndex()) {
+            var txt = e.text
+            var box = Rect(e.boundingBox!!)
+            // Tjekboks klistret på ordet ("OWillerslev"): første tegn står med tydelig luft til resten
+            val sym = e.symbols
+            if (txt.length > 1 && txt[0] in BOX_CHARS && sym.size >= 2) {
+                val a = sym[0].boundingBox
+                val b = sym[1].boundingBox
+                if (a != null && b != null && b.left - a.right > h * 0.35f) {
+                    txt = txt.substring(1)
+                    box = Rect(b.left, box.top, box.right, box.bottom)
                 }
-                if (hadNumber) continue
-                cleanText(text)?.let { out += Item(it, r, null) }
             }
+            // Tjekboks som eget "ord" foran teksten: sikre tegn (fx "D", "0") med bare lidt luft; "O" kun med tydelig
+            // luft eller lav sikkerhed i læsningen ("O brother" har almindelig ordafstand og står stille)
+            if (i == 0 && txt.length == 1 && txt[0] in BOX_CHARS && els.size > 1) {
+                val gap = els[1].boundingBox!!.left - box.right
+                if ((txt[0] in SURE_BOX && gap > h * 0.15f) || gap > h * 0.5f || e.confidence < 0.6f) continue
+            }
+            if (prevRight != Int.MIN_VALUE && box.left - prevRight > h * 1.3f) { segs += cur; cur = ArrayList() }
+            cur += txt to box
+            prevRight = box.right
+        }
+        if (cur.isNotEmpty()) segs += cur
+        for (seg in segs) {
+            val text = seg.joinToString(" ") { it.first }.trim()
+            val r = RectF(seg.first().second)
+            seg.forEach { r.union(RectF(it.second)) }
+            if (seg.size == 1 && text.length == 1) continue
+            val isbnHint = text.contains("ISBN", ignoreCase = true)
+            var hadNumber = false
+            for (m in DIGITS.findAll(text)) {
+                val v = m.value.filter { it.isDigit() }
+                val type = numType(v, isbnHint) ?: continue
+                out += Item(v, RectF(r), type)
+                hadNumber = true
+            }
+            if (hadNumber) continue
+            cleanText(text)?.let { out += Item(it, r, null) }
         }
     }
 
@@ -355,7 +380,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             return
         }
         // Numre har deres type; "Efternavn, Fornavn" foreslås som Forfatter; resten er fritekst
-        val type = item.numType ?: if (NAME.matches(item.text)) "creator" else "free"
+        val type = item.numType ?: if (item.cql) "cql" else if (NAME.matches(item.text)) "creator" else "free"
         // Numre og tekst blandes ikke i én søgning
         if (picks.any { isNumType(it.type) != isNumType(type) }) {
             Toast.makeText(this, "Numre og tekst kan ikke søges sammen", Toast.LENGTH_SHORT).show()
@@ -374,6 +399,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun valueOf(text: String, type: String): String = when (type) {
         "faust", "bmn" -> text.filter { it.isDigit() }
         "isbn" -> "\"" + text.filter { it.isDigit() } + "\""
+        "cql" -> text.trim()
         else -> "\"" + text.replace('"', ' ').replace(Regex("\\s+"), " ").trim() + "\""
     }
 
@@ -398,6 +424,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         for (p in picks) groups.getOrPut(p.type) { ArrayList() } += p
         for ((type, ps) in groups) {
             val code = codeOf(type)
+            // En hel CQL-linje i parentes, når der søges på mere end den
+            if (type == "cql") { ps.forEach { parts += if (picks.size == 1) it.text.trim() else "(" + it.text.trim() + ")" }; continue }
             if (code == null) { ps.forEach { parts += valueOf(it.text, type) }; continue }
             parts += if (ps.size == 1) code + "=" + valueOf(ps[0].text, type)
             else code + "=(" + ps.joinToString(" OR ") { valueOf(it.text, type) } + ")"
@@ -453,6 +481,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 types.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
                 m.setOnMenuItemClickListener { item ->
                     p.type = types.keys.elementAt(item.itemId)
+                    if (p.type == "cql") p.text = CqlText.repair(p.text)
                     rebuildPicks(); true
                 }
                 m.show()

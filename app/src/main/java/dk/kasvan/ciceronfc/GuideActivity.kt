@@ -894,7 +894,7 @@ class GuideActivity : LockedScreen() {
             "Søg med kamera eller bog",
             "I katalogsøgningen har CQL-feltet et kamera. Tag et billede af bogen eller skærmen, og tryk på det, du vil søge på. " +
                 "Søg med det samme som fritekst – eller angiv, om det er en titel, forfatter, faust eller ISBN, og søg på flere ting " +
-                "på én gang. Holder du en bog mod telefonen, mens CQL-feltet er fremme, slås den op med det samme.",
+                "på én gang. En CQL-linje fra en anden skærm kan søges, som den står. Holder du en bog mod telefonen, mens CQL-feltet er fremme, slås den op med det samme.",
         ) {
             val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
             val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
