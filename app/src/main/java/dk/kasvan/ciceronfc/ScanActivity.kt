@@ -222,8 +222,9 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun showCandidates() {
         val now = SystemClock.elapsedRealtime()
         val shown = synchronized(candidates) {
-            // Listen følger billedet: et nummer, der ikke er set i rammen i 1½ sekund, forsvinder
-            candidates.values.removeAll { now - it.lastSeen > 1500 }
+            // Listen følger billedet: et nummer, der ikke er set i rammen i 4 sekunder, forsvinder
+            // (længe nok til at nå at trykke, selv om kameraet er flyttet væk)
+            candidates.values.removeAll { now - it.lastSeen > 4000 }
             // Tal skal ses mindst 2 gange (stregkoder har kontrolciffer), og et tal, der er en del af
             // et længere nummer (fx uden første ciffer), vises ikke
             val sure = candidates.values.filter { it.barcode || it.hits >= 2 }
