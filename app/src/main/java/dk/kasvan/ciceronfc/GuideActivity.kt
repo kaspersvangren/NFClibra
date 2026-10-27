@@ -896,7 +896,7 @@ class GuideActivity : LockedScreen() {
             fun row(t: String, sw: Switch) = hrow(text(t, 14f).apply { layoutParams = LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT) }, sw.view).apply {
                 setPadding(0, dp(6), 0, dp(6))
             }
-            val names = listOf("Swipe-faner", "Pinkode-kontakt i Udlån", "Nulstil/Søg-pille", "Tastatur til Låner m.fl.", "Tags-knap i bjælken", "Swipe fly-in væk", "NFClibras kamera", "Egen bundmenu", "Kamera i CQL-søgning")
+            val names = listOf("Swipe-faner", "Pinkode-kontakt i Udlån", "Nulstil/Søg-pille", "Tastatur til Låner m.fl.", "Tags-knap i bjælken", "Swipe fly-in væk", "NFClibras kamera", "Egen bundmenu", "Kamera i CQL-søgning", "RFID-opslag i CQL")
             val sws = names.map { Switch(true) }
             val c = card(
                 text("Indstillinger", 17f, tc.fg, true).apply { setPadding(0, 0, 0, dp(4)) },
@@ -907,10 +907,10 @@ class GuideActivity : LockedScreen() {
             c.addView(text("Slå alle fra", 13f, tc.blue, true).apply { setPadding(0, dp(8), 0, 0) })
             // Kontakterne slås fra én ad gangen – og til igen
             loop(450) { n ->
-                val k = n % 22
+                val k = n % 24
                 when {
-                    k < 9 -> sws[k].set(false)
-                    k in 11..19 -> sws[k - 11].set(true)
+                    k < 10 -> sws[k].set(false)
+                    k in 12..21 -> sws[k - 12].set(true)
                 }
             }
             c

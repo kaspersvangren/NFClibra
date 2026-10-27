@@ -77,6 +77,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         const val TW_CAM = "tweakItemCamera"
         const val TW_NAV = "tweakNav"
         const val TW_CQL = "tweakCqlCamera"
+        const val TW_RFID_CQL = "tweakRfidCql"
         const val PREF_NAV_ORDER = "navOrder"
         /** Bundmenuens funktioner (nøgle til navn); de fire første er Ciceros standard-bjælke */
         val NAV_FUNCS = linkedMapOf(
@@ -235,6 +236,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         LogBuf.listener = { runOnUiThread { refreshLog() } }
         Hub.statusListener = { runOnUiThread { refreshStatus() } }
         Updater.listener = { runOnUiThread { refreshStatus() } }
+        // Bog ved telefonen i katalogsøgningen (Cicero lytter ikke): opslag på materialenummeret i CQL-feltet
+        Hub.onIdleRead = { bc -> runOnUiThread { onRfidLookup(bc) } }
         // Lås med det samme, når skærmen slukkes eller man skifter til en anden app
         Hub.watchLifecycle(application)
         Hub.onBackground = {
@@ -1185,6 +1188,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             TW_CAM to "NFClibras kamera i materialenummer-felter",
             TW_NAV to "Egen bundmenu",
             TW_CQL to "Kamera i CQL-søgning",
+            TW_RFID_CQL to "RFID-opslag i CQL-søgning",
         )
         val switches = tweaks.map { (key, label) ->
             switch(label, tweakOn(key)) { on ->
@@ -1491,6 +1495,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { staffKeys.hide() }
         }
 
+        /** Ciceros CQL-felt kom frem eller forsvandt (til RFID-opslaget) */
+        @JavascriptInterface
+        fun cqlPresent(on: Boolean) {
+            if (pageHost != CICERO_HOST) return
+            Hub.cqlVisible = on && tweakOn(TW_RFID_CQL)
+        }
+
         /** Kamera-knappen i CQL-feltet (app'ens egen) */
         @JavascriptInterface
         fun scanCql() {
@@ -1586,6 +1597,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         if (tweakOn(TW_FLY)) runTweak(FLYIN_SWIPE_JS)
         if (tweakOn(TW_CAM)) runTweak(CAMERA_SWAP_JS)
         if (tweakOn(TW_CQL)) runTweak(CQL_CAMERA_JS)
+        if (tweakOn(TW_RFID_CQL)) runTweak(CQL_WATCH_JS)
         if (tweakOn(TW_NAV)) runTweak(NAV_HOVER_JS)
         if (tweakOn(TW_NAV)) runTweak(NAV_LAYOUT_JS.replace("%ORDER%", navOrder().take(4).joinToString(",", "[", "]") { "'" + it + "'" }))
         pushPageColors()
@@ -1667,6 +1679,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 LogBuf.add("Materialenummer læst med kamera")
             }, 200)
         }
+    }
+
+    private fun onRfidLookup(bc: String) {
+        if (!tweakOn(TW_RFID_CQL) || Hub.locked || !resumed) return
+        if (!Regex("^[0-9A-Za-z]{1,40}$").matches(bc)) return
+        onCqlScanned("bmn=$bc")
     }
 
     /** Søgningen fra kameraet sættes i CQL-feltet (i stedet for det, der stod), og der trykkes Søg */
@@ -1826,6 +1844,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (pinPad.isShowing) pinPad.hide()
                 staffKeys.hide()
                 onPageChanged(url, loading = true)
+                Hub.cqlVisible = false
                 loadStartedAt = SystemClock.elapsedRealtime()
                 handler.removeCallbacks(slowLoadCheck)
                 handler.postDelayed(slowLoadCheck, 15_000)
@@ -3167,6 +3186,29 @@ private val CQL_APPLY_JS = """
   }
   return 'ok (Søg-knap ikke fundet – tryk selv Søg)';
 })()
+"""
+
+/** Holder øje med, om Ciceros CQL-felt står fremme (til RFID-opslaget) */
+private val CQL_WATCH_JS = """
+(function () {
+  if (window.__cnfcCqlWatch) return;
+  window.__cnfcCqlWatch = true;
+  var H = window.__cnfc, last = null;
+  function sync() {
+    var on = false;
+    if (H.cicero()) {
+      var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
+      for (var i = 0; i < ls.length && !on; i++) {
+        if (H.textOf(ls[i]).replace(/\*/g, '').trim() !== 'CQL') continue;
+        var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field');
+        on = !!ff && ff.getClientRects().length > 0;
+      }
+    }
+    if (on !== last) { last = on; try { CiceroNFC.cqlPresent(on); } catch (e) {} }
+  }
+  sync();
+  H.onChange(sync);
+})();
 """
 
 private val TAGS_BUTTON_JS = """

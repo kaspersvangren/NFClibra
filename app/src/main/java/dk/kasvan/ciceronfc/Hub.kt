@@ -306,7 +306,14 @@ object Hub {
         current = state
         pingFails = 0
         Server.broadcast("addTag", state.toJson().toString())
-        if (Server.clientCount() == 0) {
+        val bc = state.content?.barcode.orEmpty()
+        val lookup = onIdleRead
+        if (Server.clientCount() == 0 && cqlVisible && lookup != null && bc.isNotEmpty()) {
+            // Katalogsøgningen med CQL-feltet er fremme, og Cicero lytter ikke: hurtigt opslag på materialenummeret
+            LogBuf.add("Læst: ${state.label()} · RFID-opslag i CQL")
+            signal(Fb.READ, "Søger", state.label())
+            lookup(bc)
+        } else if (Server.clientCount() == 0) {
             LogBuf.add("Læst: ${state.label()} · alarm ${afiText(state.afi)} (Cicero lytter ikke)")
             signal(Fb.READ, "Aktiver RFID", state.label())
         } else {
@@ -622,6 +629,11 @@ object Hub {
 
     /** App'ens andre skærme (værktøj, kamera, guide) lukker sig, når der låses – de melder sig her. */
     val onLockListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** Ciceros CQL-felt står fremme (sat af hovedskærmen) – så giver en bog ved telefonen et hurtigt opslag */
+    @Volatile var cqlVisible = false
+    /** Hurtigt opslag på et materialenummer (sat af hovedskærmen, når tilpasningen er slået til) */
+    @Volatile var onIdleRead: ((String) -> Unit)? = null
 
     /** App'en er låst: slip bøgerne ved telefonen, så intet kan ændres på dem bag låsen, og luk de andre skærme. */
     fun onLocked() {
