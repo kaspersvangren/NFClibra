@@ -38,7 +38,7 @@ class CqlTextTest {
         assertEquals("(ti=\"lille traktor*\" OR ti=\"stor traktor*\") AND fo=bo",
             CqlText.repair("(ti=lille traktor* OR ti=stor traktor*) AND fo=bo"))
         // Et kort ord sidst i en titel i anførselstegn er ikke en kode
-        assertEquals("ti=\"lille bog\"", CqlText.repair("ti=\"lille bog\" AND"))
+        assertEquals("ti=\"lille bog\" AND fo=x", CqlText.repair("ti=\"lille bog\" AND fo=x"))
     }
 
     @Test
