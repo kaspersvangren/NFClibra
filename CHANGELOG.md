@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version** – CQL-kameraet: udløseren sidder nederst på skærmen lige over Annuller/Lys/Zoom, hvor den er nem at nå med tommelfingeren.
 - **0.6.1** (115) – CQL-kameraet: udløseren er en rund knap nederst på billedet som i telefonens kamera (↺ for nyt billede). Tjekbokse læst som "D", "0" eller "O" springes bedre over, og "Efternavn, Fornavn" foreslås som Forfatter. CQL-feltet: kamera-ikonet står til højre for historik-ikonet i Ciceros eget udseende og med samme luft som i Låner-feltet, og et blåt RFID-ikon viser, at RFID-opslaget er slået til (tryk for at slå det fra og til). RFID-ikonet i bjælken er blåt, mens opslaget står klar.
 - **0.6.0** (114) – RFID-opslag i CQL-søgningen: står katalogsøgningen med CQL-feltet fremme, og holder man en bog mod telefonen, søges der med det samme på bmn=<materialenummer>. En ny bog erstatter søgningen. Sker kun, når Cicero ikke selv lytter efter RFID; Udlån og Aflever er som før. Kan slås fra under Tilpasninger af Cicero. Guiden har fået sider om at søge med kamera eller bog og om at indrette sin egen bundmenu.
 - **0.5.7** (113) – Rettet: Nulstil/Søg-pillen kunne forsvinde sammen med Ciceros egen række, når Cicero tegnede en del af siden om (fx efter en søgning). Nu sættes pillen ind igen, og loggen skriver det.

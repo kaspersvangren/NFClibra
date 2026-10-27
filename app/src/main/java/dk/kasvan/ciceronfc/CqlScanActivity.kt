@@ -108,7 +108,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         still = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
         marks = ItemsView(this)
-        // Udløser som i telefonens kamera: rund knap nederst på billedet. Når billedet er taget: ↺ = nyt billede
+        // Udløser som i telefonens kamera: rund knap nederst på skærmen, nem at nå med tommelfingeren. Når billedet er taget: ↺ = nyt billede
         shutterInner = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 26f
@@ -126,7 +126,6 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(preview, FrameLayout.LayoutParams(match, match))
             addView(still, FrameLayout.LayoutParams(match, match))
             addView(marks, FrameLayout.LayoutParams(match, match))
-            addView(shutter, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(14) })
         }
         hint = TextView(this).apply {
             text = "Sigt på bogen eller skærmen, og tag et billede."
@@ -193,6 +192,9 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(picksScroll, LinearLayout.LayoutParams(match, 0, 1f))
             addView(cqlPreview)
             addView(searchAll, LinearLayout.LayoutParams(match, wrap).apply { setMargins(dp(12), dp(6), dp(12), 0) })
+            addView(FrameLayout(this@CqlScanActivity).apply {
+                addView(shutter, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
+            }, LinearLayout.LayoutParams(match, dp(88)).apply { topMargin = dp(8) })
             addView(bottom)
         }
         setContentView(root)
