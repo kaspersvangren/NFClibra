@@ -57,13 +57,12 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     @Volatile private var frameRect: Rect? = null
     private lateinit var list: LinearLayout
     private lateinit var hint: TextView
-    private var torch = false
     private var dark = true
     private lateinit var tc: ToolColors
     private val candidates = LinkedHashMap<String, Candidate>()
     private var lastUiUpdate = 0L
     private var notReadyLogged = false
-    private var zoomed = true
+    private lateinit var controls: CameraControls
     // Den længde jeres materialenumre plejer at have (lært fra læste tags); null = ikke set endnu
     private val itemLen by lazy { Hub.itemLength() }
     private lateinit var camBox: FrameLayout
@@ -112,30 +111,9 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, dp(12), 0)
         }
-        val bottom = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(12))
-        }
-        fun smallButton(label: String, action: (TextView) -> Unit) = TextView(this).apply {
-            text = label
-            textSize = 16f
-            setTextColor(fg)
-            gravity = Gravity.CENTER
-            setPadding(dp(20), dp(12), dp(20), dp(12))
-            setOnClickListener { action(this) }
-        }
-        bottom.addView(smallButton("Annuller") { finish() })
-        bottom.addView(smallButton("Lys til") { b ->
-            torch = !torch
-            controller?.enableTorch(torch)
-            b.text = if (torch) "Lys fra" else "Lys til"
-        })
-        bottom.addView(smallButton("Zoom 1×") { b ->
-            zoomed = !zoomed
-            applyZoom()
-            b.text = if (zoomed) "Zoom 1×" else "Zoom 2×"
-        })
+        // ✕, lys og zoom oven på billedet – som i telefonens eget kamera (2× fra start: telefonen holdes længere
+        // væk, hvor den kan stille skarpt, og fri af chippen)
+        controls = CameraControls(this, camBox, 2f) { finish() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -143,7 +121,6 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(hint)
             addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
-            addView(bottom)
         }
         setContentView(root)
         window.statusBarColor = bg
@@ -178,18 +155,11 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             preview.controller = c
             c.bindToLifecycle(this)
             controller = c
-            // 2× zoom fra start: telefonen holdes længere væk, hvor den kan stille skarpt (og fri af chippen)
-            c.initializationFuture.addListener({ applyZoom() }, ContextCompat.getMainExecutor(this))
+            controls.attach(c)
         } catch (e: Exception) {
             LogBuf.add("Kamera kunne ikke starte: ${e.message}")
             hint.text = "Kameraet kunne ikke starte"
         }
-    }
-
-    private fun applyZoom() {
-        val c = controller ?: return
-        val max = c.zoomState.value?.maxZoomRatio ?: 1f
-        c.setZoomRatio(if (zoomed) minOf(2f, max) else 1f)
     }
 
     private fun inFrame(r: Rect?): Boolean {

@@ -85,8 +85,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var cqlPreview: TextView
     private lateinit var searchAll: TextView
     private var controller: LifecycleCameraController? = null
-    private var torch = false
-    private var zoomed = false
+    private lateinit var controls: CameraControls
     private var frozen = false
     private var busy = false
     private val picks = ArrayList<Pick>()
@@ -157,30 +156,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             visibility = View.INVISIBLE
         }
         searchAll = pill("Søg", true) { if (picks.isNotEmpty()) finishWith(cqlOfPicks()) }.apply { visibility = View.INVISIBLE }
-        val bottom = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(12))
-        }
-        fun smallButton(label: String, action: (TextView) -> Unit) = TextView(this).apply {
-            text = label
-            textSize = 16f
-            setTextColor(tc.fg)
-            gravity = Gravity.CENTER
-            setPadding(dp(20), dp(12), dp(20), dp(12))
-            setOnClickListener { action(this) }
-        }
-        bottom.addView(smallButton("Annuller") { finish() })
-        bottom.addView(smallButton("Lys til") { b ->
-            torch = !torch
-            controller?.enableTorch(torch)
-            b.text = if (torch) "Lys fra" else "Lys til"
-        })
-        bottom.addView(smallButton("Zoom 2×") { b ->
-            zoomed = !zoomed
-            applyZoom()
-            b.text = if (zoomed) "Zoom 1×" else "Zoom 2×"
-        })
+        // ✕, lys og zoom oven på billedet – som i telefonens eget kamera og ens med kameraet til materialenumre
+        controls = CameraControls(this, camBox, 1f) { finish() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(tc.bg)
@@ -194,8 +171,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(searchAll, LinearLayout.LayoutParams(match, wrap).apply { setMargins(dp(12), dp(6), dp(12), 0) })
             addView(FrameLayout(this@CqlScanActivity).apply {
                 addView(shutter, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
-            }, LinearLayout.LayoutParams(match, dp(88)).apply { topMargin = dp(8) })
-            addView(bottom)
+            }, LinearLayout.LayoutParams(match, dp(96)).apply { setMargins(0, dp(8), 0, dp(12)) })
         }
         setContentView(root)
         window.statusBarColor = tc.bg
@@ -215,17 +191,11 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             preview.controller = c
             c.bindToLifecycle(this)
             controller = c
-            c.initializationFuture.addListener({ applyZoom() }, ContextCompat.getMainExecutor(this))
+            controls.attach(c)
         } catch (e: Exception) {
             LogBuf.add("Kamera kunne ikke starte: ${e.message}")
             hint.text = "Kameraet kunne ikke starte"
         }
-    }
-
-    private fun applyZoom() {
-        val c = controller ?: return
-        val max = c.zoomState.value?.maxZoomRatio ?: 1f
-        c.setZoomRatio(if (zoomed) minOf(2f, max) else 1f)
     }
 
     // ---------- Billedet ----------
@@ -238,6 +208,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.setImageBitmap(bmp)
         still.visibility = View.VISIBLE
         marks.items = emptyList()
+        controls.liveControls(false)
         shutterInner.text = "↺"
         shutter.contentDescription = "Nyt billede"
         hint.text = "Læser billedet …"
@@ -268,6 +239,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.setImageDrawable(null)
         picks.forEach { it.item = null }
         marks.items = emptyList()
+        controls.liveControls(true)
         shutterInner.text = ""
         shutter.contentDescription = "Tag billede"
         hint.text = "Sigt på bogen eller skærmen, og tag et billede."
