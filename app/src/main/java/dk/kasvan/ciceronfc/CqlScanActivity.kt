@@ -111,14 +111,13 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         shutterInner = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 26f
-            setTextColor(Color.parseColor("#202124"))
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+            setTextColor(tc.bg)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.fg) }
         }
         shutter = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(90, 0, 0, 0)); setStroke(dp(4), Color.WHITE) }
-            addView(shutterInner, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT); setStroke(dp(4), tc.fg) }
+            addView(shutterInner, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
             contentDescription = "Tag billede"
-            elevation = dp(4).toFloat()
             setOnClickListener { if (frozen) retake() else capture() }
         }
         val camBox = FrameLayout(this).apply {
@@ -156,8 +155,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             visibility = View.INVISIBLE
         }
         searchAll = pill("Søg", true) { if (picks.isNotEmpty()) finishWith(cqlOfPicks()) }.apply { visibility = View.INVISIBLE }
-        // ✕, lys og zoom oven på billedet – som i telefonens eget kamera og ens med kameraet til materialenumre
-        controls = CameraControls(this, camBox, 1f) { finish() }
+        // Lys, udløser og ✕ nederst ved tommelfingeren, zoom lige over – ens med kameraet til materialenumre
+        controls = CameraControls(this, tc, 1f, shutter) { finish() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(tc.bg)
@@ -169,9 +168,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(picksScroll, LinearLayout.LayoutParams(match, 0, 1f))
             addView(cqlPreview)
             addView(searchAll, LinearLayout.LayoutParams(match, wrap).apply { setMargins(dp(12), dp(6), dp(12), 0) })
-            addView(FrameLayout(this@CqlScanActivity).apply {
-                addView(shutter, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
-            }, LinearLayout.LayoutParams(match, dp(96)).apply { setMargins(0, dp(8), 0, dp(12)) })
+            addView(controls.panel, LinearLayout.LayoutParams(match, wrap))
         }
         setContentView(root)
         window.statusBarColor = tc.bg

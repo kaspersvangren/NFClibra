@@ -111,9 +111,9 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, dp(12), 0)
         }
-        // ✕, lys og zoom oven på billedet – som i telefonens eget kamera (2× fra start: telefonen holdes længere
+        // Lys, zoom og ✕ nederst ved tommelfingeren – ens i alle kameraer (2× fra start: telefonen holdes længere
         // væk, hvor den kan stille skarpt, og fri af chippen)
-        controls = CameraControls(this, camBox, 2f) { finish() }
+        controls = CameraControls(this, tc, 2f, null) { finish() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -121,6 +121,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(camBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(hint)
             addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
+            addView(controls.panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         setContentView(root)
         window.statusBarColor = bg

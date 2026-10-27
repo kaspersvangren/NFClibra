@@ -10,60 +10,74 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Space
 import android.widget.TextView
 import androidx.camera.view.LifecycleCameraController
 import androidx.core.content.ContextCompat
 
 /**
- * Knapperne oven på kamerabilledet, ens i alle app'ens kameraer og som i telefonens eget kamera:
- * ✕ (luk) øverst til venstre, lyn (lommelygte til/fra) øverst til højre og zoom-knapper (0,5× · 1× · 2×) forneden.
+ * Knapperne under kamerabilledet, ens i alle app'ens kameraer og placeret ved tommelfingeren:
+ *
+ *            [ ,5 ]  [ 1× ]  [ 2 ]          zoom (0,5× kun hvis telefonen har vidvinkel)
+ *       ⚡            ( ◯ )             ✕   lys · udløser (kun hvor der tages billeder) · luk
+ *
+ * Billedet selv er frit for knapper, så de ikke dækker det, man sigter på.
  */
 class CameraControls(
     private val activity: Activity,
-    camBox: FrameLayout,
+    private val tc: ToolColors,
     private val defaultZoom: Float,
+    center: View?,
     onClose: () -> Unit,
 ) {
     private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
 
     private var controller: LifecycleCameraController? = null
     private var torch = false
-    private var zoom = defaultZoom
     private val torchIcon = ImageView(activity)
+    private val chips = LinkedHashMap<Float, TextView>()
     private val zoomRow = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        background = GradientDrawable().apply { setColor(Color.argb(90, 0, 0, 0)); cornerRadius = dp(28).toFloat() }
+        background = GradientDrawable().apply { setColor(tc.card); cornerRadius = dp(28).toFloat() }
         setPadding(dp(4), dp(4), dp(4), dp(4))
-        visibility = View.GONE
+        visibility = View.INVISIBLE
     }
-    private val chips = LinkedHashMap<Float, TextView>()
-    private val closeBtn: View
-    private val torchBtn: View
-
-    init {
-        closeBtn = round(R.drawable.ic_close, "Luk") { onClose() }
-        torchBtn = FrameLayout(activity).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(110, 0, 0, 0)) }
-            contentDescription = "Lys"
-            addView(torchIcon, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
-            setOnClickListener { setTorch(!torch) }
-        }
-        paintTorch()
-        camBox.addView(closeBtn, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.START).apply { setMargins(dp(12), dp(12), 0, 0) })
-        camBox.addView(torchBtn, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(12), dp(12), 0) })
-        camBox.addView(zoomRow, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(12) })
+    private val torchBtn: FrameLayout = roundButton("Lys").apply {
+        addView(torchIcon, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+        setOnClickListener { setTorch(!torch) }
     }
-
-    private fun round(icon: Int, label: String, click: () -> Unit) = FrameLayout(activity).apply {
-        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(110, 0, 0, 0)) }
-        contentDescription = label
+    private val closeBtn: FrameLayout = roundButton("Luk").apply {
         addView(ImageView(activity).apply {
-            setImageResource(icon)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-        }, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-        setOnClickListener { click() }
+            setImageResource(R.drawable.ic_close)
+            imageTintList = ColorStateList.valueOf(tc.fg)
+        }, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+        setOnClickListener { onClose() }
+    }
+
+    /** Hele panelet – lægges nederst på skærmen */
+    val panel: LinearLayout = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(dp(16), dp(8), dp(16), dp(12))
+        addView(zoomRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(torchBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+            addView(Space(activity), LinearLayout.LayoutParams(0, 1, 1f))
+            if (center != null) addView(center, LinearLayout.LayoutParams(dp(72), dp(72)))
+            else addView(Space(activity), LinearLayout.LayoutParams(dp(72), dp(52)))
+            addView(Space(activity), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(closeBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+    }
+
+    init { paintTorch() }
+
+    private fun roundButton(label: String) = FrameLayout(activity).apply {
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.key) }
+        contentDescription = label
     }
 
     /** Kaldes, når kameraet er startet: zoom-knapperne vises efter, hvad telefonens kamera kan */
@@ -87,25 +101,24 @@ class CameraControls(
                     setOnClickListener { setZoom(z) }
                 }
                 chips[z] = t
-                zoomRow.addView(t, LinearLayout.LayoutParams(dp(44), dp(44)).apply { setMargins(dp(2), 0, dp(2), 0) })
+                zoomRow.addView(t, LinearLayout.LayoutParams(dp(46), dp(46)).apply { setMargins(dp(2), 0, dp(2), 0) })
             }
-            zoomRow.visibility = if (levels.size > 1) View.VISIBLE else View.GONE
+            zoomRow.visibility = if (levels.size > 1) View.VISIBLE else View.INVISIBLE
             setZoom(if (defaultZoom in levels) defaultZoom else 1f)
             if (torch) c.enableTorch(true)
         }, ContextCompat.getMainExecutor(activity))
     }
 
     fun setZoom(z: Float) {
-        zoom = z
         controller?.setZoomRatio(z)
         for ((level, t) in chips) {
             val on = level == z
             t.text = (if (level == 0.5f) ",5" else level.toInt().toString()) + if (on) "×" else ""
-            t.textSize = if (on) 15f else 13f
-            t.setTextColor(if (on) Color.parseColor("#9CC8FF") else Color.WHITE)
+            t.textSize = if (on) 16f else 13f
+            t.setTextColor(if (on) tc.blue else tc.fg)
             t.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (on) Color.argb(170, 0, 0, 0) else Color.argb(60, 0, 0, 0))
+                setColor(if (on) tc.key else Color.TRANSPARENT)
             }
         }
     }
@@ -118,14 +131,14 @@ class CameraControls(
 
     private fun paintTorch() {
         torchIcon.setImageResource(if (torch) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
-        torchIcon.imageTintList = ColorStateList.valueOf(if (torch) Color.parseColor("#FFD54F") else Color.WHITE)
+        torchIcon.imageTintList = ColorStateList.valueOf(if (torch) Color.parseColor("#F6B400") else tc.fg)
         torchBtn.contentDescription = if (torch) "Lys til – tryk for at slukke" else "Lys fra – tryk for at tænde"
     }
 
-    /** Zoom og lys skjules, mens et taget billede står stille (de virker kun på det levende billede) */
+    /** Zoom og lys gemmes (uden at noget flytter sig), mens et taget billede står stille – de virker kun på det levende billede */
     fun liveControls(show: Boolean) {
-        val v = if (show) View.VISIBLE else View.GONE
+        val v = if (show) View.VISIBLE else View.INVISIBLE
         torchBtn.visibility = v
-        zoomRow.visibility = if (show && chips.size > 1) View.VISIBLE else View.GONE
+        zoomRow.visibility = if (show && chips.size > 1) View.VISIBLE else View.INVISIBLE
     }
 }
