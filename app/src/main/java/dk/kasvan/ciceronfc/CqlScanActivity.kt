@@ -100,6 +100,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var side: LinearLayout
     private val worker = Executors.newSingleThreadExecutor()
     private var frozen = false
+    private var land = false
     private var busy = false
     private val picks = ArrayList<Pick>()
     private val itemLen by lazy { Hub.itemLength() }
@@ -206,12 +207,13 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun arrange() {
         val match = LinearLayout.LayoutParams.MATCH_PARENT
         val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
-        val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         (controls.panel.parent as? android.view.ViewGroup)?.removeView(controls.panel)
         controls.setVertical(land)
         if (land) {
             root.orientation = LinearLayout.HORIZONTAL
-            camBox.layoutParams = LinearLayout.LayoutParams(0, match, 1.15f)
+            // Billedet får omkring to tredjedele af bredden, så en lang linje på en skærm er med
+            camBox.layoutParams = LinearLayout.LayoutParams(0, match, 2.3f)
             side.layoutParams = LinearLayout.LayoutParams(0, match, 1f)
             root.addView(controls.panel, LinearLayout.LayoutParams(wrap, match))
             cqlPreview.maxLines = 2
@@ -228,6 +230,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         arrange()
+        rebuildPicks()
     }
 
     private fun startCamera() {
@@ -577,12 +580,20 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 }
                 m.show()
             }
+            // Liggende er der smalt: teksten øverst og knapperne under den
+            val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END }
             picksBox.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
+                orientation = if (land) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply { setColor(tc.card); cornerRadius = dp(10).toFloat() }
                 setPadding(dp(12), dp(6), dp(8), dp(6))
-                addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                if (land) {
+                    addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                    addView(chipRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+                } else {
+                    addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(chipRow)
+                }
                 listOf(
                     typeChip,
                     pill("Søg nu", false) { finishWith(cqlOf(p.text, p.type)) },
@@ -591,7 +602,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                         p.item?.pick = null
                         rebuildPicks(); marks.invalidate()
                     },
-                ).forEach { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
+                ).forEach { chipRow.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), 0, dp(3)) })
         }
     }

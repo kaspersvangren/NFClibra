@@ -11,6 +11,9 @@ object CqlText {
     /** Andre koder (små bogstaver): med "=", eller med "-" lige efter "(" eller AND/OR */
     private val ANY_EQ = Regex("""(^|[\s(])([a-zæøå]{2,5}\d?)\s*=\s*""")
     private val ANY_DASH = Regex("""(^|\(|\s(?:AND|OR|NOT|and|or|not)\s)([a-zæøå]{2,5}\d?)\s*[\-–]\s*""")
+    /** "=" helt væk foran anførselstegn: bfi"Hovedbiblioteket" */
+    // Kun lige efter "(" eller AND/OR – ikke et ord sidst i en titel i anførselstegn ("lille bog")
+    private val NO_EQ = Regex("""(^|\(|\s(?:AND|OR|NOT|and|or|not)\s)($KNOWN|[a-zæøå]{2,5}\d?)\s*(?=")""")
     private val PREFIX = Regex("""(?i)^\s*CQL\s*[:;.]?\s*""")
     private val BOOL = Regex("""\s(?:AND|OR|NOT)\s""", RegexOption.IGNORE_CASE)
     /** Bibliotekets eget filter, som Cicero selv sætter på: "and (bai=715900)" */
@@ -33,7 +36,7 @@ object CqlText {
     fun continues(s: String): Boolean =
         KNOWN_EQ.containsMatchIn(s) || ANY_EQ.containsMatchIn(s) || BOOL.containsMatchIn(" $s ") || s.contains('"') || s.contains('*') || s.contains(')')
 
-    /** Retter en læst CQL-linje: uden "CQL:" og bibliotekets bai-filter, med = efter koderne og værdierne i anførselstegn */
+    /** Retter en læst CQL-linje: uden "CQL:" og bibliotekets bai-filter, med = efter koderne og anførselstegn, hvor de mangler */
     fun repair(raw: String): String {
         var s = raw.replace(Regex("[“”„″«»]"), "\"").replace("''", "\"").replace(Regex("\\s+"), " ").trim()
         s = PREFIX.replace(s, "")
@@ -41,9 +44,13 @@ object CqlText {
         s = KNOWN_EQ.replace(s) { it.groupValues[1] + it.groupValues[2].lowercase() + "=" }
         s = ANY_DASH.replace(s) { it.groupValues[1] + it.groupValues[2] + "=" }
         s = ANY_EQ.replace(s) { it.groupValues[1] + it.groupValues[2] + "=" }
+        s = NO_EQ.replace(s) { it.groupValues[1] + it.groupValues[2].lowercase() + "=" }
+        // Anførselstegn kun hvor de stod (et tabt tegn sættes på igen), eller hvor værdien har mellemrum ("rane willerslev*")
         s = VALUE.replace(s) { m ->
-            val v = m.groupValues[3].replace("\"", "").trim()
-            m.groupValues[1] + m.groupValues[2] + "=" + (if (v.isNotEmpty() && v.all { it.isDigit() }) v else "\"" + v + "\"")
+            val raw = m.groupValues[3]
+            val v = raw.replace("\"", "").trim()
+            val quote = raw.contains('"') || v.contains(' ')
+            m.groupValues[1] + m.groupValues[2] + "=" + (if (quote) "\"" + v + "\"" else v)
         }
         // Parenteser i balance: overskydende ")" væk, manglende ")" sat på
         val out = StringBuilder()

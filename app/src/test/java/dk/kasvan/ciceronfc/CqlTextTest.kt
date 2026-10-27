@@ -11,13 +11,15 @@ class CqlTextTest {
         // Sådan blev linjen læst fra et billede af Ciceros skærm: "=" som "-", anførselstegn væk
         val raw = "CQL: (ti-på flugt i sibirien* AND fo=rane willerslev* AND em= sibirien*) and (bai=715900)"
         assertTrue(CqlText.looksCql(raw))
-        assertEquals("ti=\"på flugt i sibirien*\" AND fo=\"rane willerslev*\" AND em=\"sibirien*\"", CqlText.repair(raw))
+        assertEquals("ti=\"på flugt i sibirien*\" AND fo=\"rane willerslev*\" AND em=sibirien*", CqlText.repair(raw))
     }
 
     @Test
     fun ukendte_koder_og_filtre_rettes_og_bai_tages_fra() {
-        val want = "(sp=\"dan\" and usa and historie) and ((bhs=\"OnShelf\" OR bhs=\"NotForLoan\") AND ((bfi=\"Hovedbiblioteket\")))"
+        val want = "(sp=dan and usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi=\"Hovedbiblioteket\")))"
         assertEquals(want, CqlText.repair("CQL: (sp=dan and usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi=\"Hovedbiblioteket\")) and bai=715900)"))
+        // "=" helt væk foran anførselstegn
+        assertEquals(want, CqlText.repair("CQL: (sp=dan and usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi\"Hovedbiblioteket\")) and bai=715900)"))
         // Samme linje læst med "-" i stedet for "="
         assertEquals(want, CqlText.repair("CQL: (sp-dan and usa and historie) and ((bhs-OnShelf OR bhs-NotForLoan) AND ((bfi-\"Hovedbiblioteket\")) and bai-715900)"))
     }
@@ -33,8 +35,10 @@ class CqlTextTest {
         assertEquals("term.creator=\"Willerslev, Rane\" AND term.title=(\"a\" OR \"b\")",
             CqlText.repair("term.creator=\"Willerslev, Rane\" AND term.title=(\"a\" OR \"b\")"))
         assertEquals("faust=27813739 OR faust=24633594", CqlText.repair("faust=27813739 OR faust=24633594"))
-        assertEquals("(ti=\"lille traktor*\" OR ti=\"stor traktor*\") AND fo=\"bo\"",
+        assertEquals("(ti=\"lille traktor*\" OR ti=\"stor traktor*\") AND fo=bo",
             CqlText.repair("(ti=lille traktor* OR ti=stor traktor*) AND fo=bo"))
+        // Et kort ord sidst i en titel i anførselstegn er ikke en kode
+        assertEquals("ti=\"lille bog\"", CqlText.repair("ti=\"lille bog\" AND"))
     }
 
     @Test

@@ -65,8 +65,8 @@ class CameraControls(
     init { arrange(); paintTorch() }
 
     /**
-     * Liggende telefon: knapperne står lodret i højre side som i telefonens kamera (lys øverst, udløser i midten,
-     * ✕ nederst, zoom ved siden af). Stående: vandret nederst.
+     * Liggende telefon: knapperne står i én lodret kolonne i højre side som i telefonens kamera (lys øverst, zoom,
+     * udløser, ✕ nederst). Stående: vandret nederst.
      */
     fun setVertical(v: Boolean) {
         if (v == vertical) return
@@ -81,28 +81,34 @@ class CameraControls(
         buttons.removeAllViews()
         zoomRow.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         for (i in 0 until zoomRow.childCount) placeChip(zoomRow.getChildAt(i))
-        buttons.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        if (vertical) {
+            // Én smal kolonne i højre side: lys øverst, zoom, udløser i midten, ✕ nederst – så billedet får bredden
+            panel.orientation = LinearLayout.VERTICAL
+            panel.gravity = Gravity.CENTER_HORIZONTAL
+            panel.setPadding(dp(8), dp(10), dp(10), dp(10))
+            fun gap() = panel.addView(Space(activity), LinearLayout.LayoutParams(1, 0, 1f))
+            panel.addView(torchBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+            gap()
+            panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
+            gap()
+            if (centerView != null) { panel.addView(centerView, LinearLayout.LayoutParams(dp(72), dp(72))); gap() }
+            panel.addView(closeBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+            return
+        }
+        buttons.orientation = LinearLayout.HORIZONTAL
         buttons.gravity = Gravity.CENTER
-        fun gap() = Space(activity).also { buttons.addView(it, if (vertical) LinearLayout.LayoutParams(1, 0, 1f) else LinearLayout.LayoutParams(0, 1, 1f)) }
+        fun gap() = buttons.addView(Space(activity), LinearLayout.LayoutParams(0, 1, 1f))
         buttons.addView(torchBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
         gap()
         if (centerView != null) buttons.addView(centerView, LinearLayout.LayoutParams(dp(72), dp(72)))
-        else buttons.addView(Space(activity), if (vertical) LinearLayout.LayoutParams(dp(52), dp(72)) else LinearLayout.LayoutParams(dp(72), dp(52)))
+        else buttons.addView(Space(activity), LinearLayout.LayoutParams(dp(72), dp(52)))
         gap()
         buttons.addView(closeBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
-        if (vertical) {
-            panel.orientation = LinearLayout.HORIZONTAL
-            panel.gravity = Gravity.CENTER_VERTICAL
-            panel.setPadding(dp(8), dp(12), dp(12), dp(12))
-            panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
-            panel.addView(buttons, LinearLayout.LayoutParams(wrap, match).apply { marginStart = dp(10) })
-        } else {
-            panel.orientation = LinearLayout.VERTICAL
-            panel.gravity = Gravity.CENTER_HORIZONTAL
-            panel.setPadding(dp(16), dp(8), dp(16), dp(12))
-            panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
-            panel.addView(buttons, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(10) })
-        }
+        panel.orientation = LinearLayout.VERTICAL
+        panel.gravity = Gravity.CENTER_HORIZONTAL
+        panel.setPadding(dp(16), dp(8), dp(16), dp(12))
+        panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
+        panel.addView(buttons, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(10) })
     }
 
     private fun placeChip(v: View) {
