@@ -57,6 +57,7 @@
 
         <activity
             android:name=".CqlScanActivity"
+            android:screenOrientation="sensor"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:exported="false" />
 
