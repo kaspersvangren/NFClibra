@@ -1500,6 +1500,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         fun cqlPresent(on: Boolean) {
             if (pageHost != CICERO_HOST) return
             Hub.cqlVisible = on && tweakOn(TW_RFID_CQL)
+            runOnUiThread { refreshStatus() }
         }
 
         /** Kamera-knappen i CQL-feltet (app'ens egen) */
@@ -2143,7 +2144,8 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         val nfcOn = n?.isEnabled == true
         if (lastNfcOn != null && lastNfcOn != nfcOn) LogBuf.add(if (nfcOn) "NFC slået til" else "NFC slået fra")
         lastNfcOn = nfcOn
-        val listening = Server.clientCount() > 0
+        // Blå, når Cicero lytter – eller når RFID-opslaget i CQL-søgningen står klar
+        val listening = Server.clientCount() > 0 || Hub.cqlVisible
         val problem = when {
             n == null -> "Ingen NFC"
             !n.isEnabled -> "NFC slået fra – tryk her"
@@ -3120,19 +3122,17 @@ private val CQL_CAMERA_JS = """
     return null;
   }
   function make(ic) {
-    // Samme størrelse, afstand og farve som historik-ikonet ved siden af
+    // Samme størrelse og farve som historik-ikonet; kameraet tegnet som Ciceros eget (Material "photo_camera")
     var cs = ic ? getComputedStyle(ic) : null, r = ic ? ic.getBoundingClientRect() : { width: 24, height: 24 };
     var w = Math.round(r.width) || 24, h = Math.round(r.height) || 24;
     var b = document.createElement('span');
     b.setAttribute('role', 'button');
     b.setAttribute('data-cnfc', 'cqlcam');
     b.setAttribute('aria-label', 'Søg med kamera');
-    b.style.cssText = 'display:' + (cs ? cs.display : 'inline-block') + ';box-sizing:' + (cs ? cs.boxSizing : 'content-box') + ';' +
-      'width:' + w + 'px;height:' + h + 'px;padding:' + (cs ? cs.padding : '0') + ';margin:' + (cs ? cs.margin : '0') + ';' +
-      'margin-right:16px;vertical-align:' + (cs ? cs.verticalAlign : 'middle') + ';cursor:pointer;' +
+    b.style.cssText = 'display:inline-block;flex:none;width:' + w + 'px;height:' + h + 'px;margin:0 0 0 16px;padding:0;cursor:pointer;' +
       'color:' + (cs ? cs.color : 'currentColor') + ';-webkit-tap-highlight-color:transparent;';
-    b.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" style="display:block">' +
-      '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
+    b.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor" style="display:block">' +
+      '<path d="M12 17.5q1.88 0 3.19-1.31Q16.5 14.88 16.5 13t-1.31-3.19Q13.88 8.5 12 8.5T8.81 9.81Q7.5 11.13 7.5 13t1.31 3.19Q10.13 17.5 12 17.5Zm0-2q-1.05 0-1.78-.73Q9.5 14.05 9.5 13t.72-1.78Q10.95 10.5 12 10.5t1.78.72q.72.73.72 1.78t-.72 1.78q-.73.72-1.78.72ZM4 21q-.83 0-1.41-.59Q2 19.83 2 19V7q0-.83.59-1.41Q3.18 5 4 5h3.15L9 3h6l1.85 2H20q.83 0 1.41.59Q22 6.18 22 7v12q0 .83-.59 1.41Q20.83 21 20 21Zm0-2h16V7h-4.05l-1.82-2h-4.25L8.05 7H4Z"/></svg>';
     b.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       var ff = cqlField();
@@ -3141,22 +3141,27 @@ private val CQL_CAMERA_JS = """
     }, true);
     return b;
   }
+  /** Placerer el lige til højre for ref med samme luft som mellem Ciceros egne ikoner (16 px) og på samme højde */
+  function align(el, ref) {
+    requestAnimationFrame(function () {
+      var a = ref.getBoundingClientRect(), m = el.getBoundingClientRect();
+      var dx = 16 - (m.left - a.right);
+      if (Math.abs(dx) > 1) el.style.marginLeft = Math.max(0, 16 + dx) + 'px';
+      var dy = (a.top + a.height / 2) - (m.top + m.height / 2);
+      if (Math.abs(dy) > 1) el.style.transform = 'translateY(' + Math.round(dy) + 'px)';
+    });
+  }
   function sync() {
     if (!H.cicero()) return;
     var ff = cqlField();
     if (!ff || ff.querySelector('[data-cnfc="cqlcam"]')) return;
-    // Ved siden af historik-ikonet (eller sidst i feltet, hvis det ikke findes)
-    var ic = ff.querySelector('mat-icon');
+    // Til højre for historik-ikonet – som i Låner-feltet, hvor kameraet også står yderst
+    var ic = ff.querySelector('mat-icon:not([data-cnfc] *)');
     var host = ic ? (ic.closest('button, [role=button]') || ic) : null;
     var b = make(ic);
-    if (host && host.parentElement) host.parentElement.insertBefore(b, host);
+    if (host && host.parentElement) host.parentElement.insertBefore(b, host.nextSibling);
     else (ff.querySelector('.mat-mdc-form-field-flex') || ff).appendChild(b);
-    // Står den alligevel skævt i forhold til historik-ikonet, rettes den op
-    if (ic) requestAnimationFrame(function () {
-      var a = ic.getBoundingClientRect(), m = b.getBoundingClientRect();
-      var dy = (a.top + a.height / 2) - (m.top + m.height / 2);
-      if (Math.abs(dy) > 1) b.style.transform = 'translateY(' + Math.round(dy) + 'px)';
-    });
+    if (ic) align(b, ic);
     if (!logged) { logged = true; try { CiceroNFC.tweak('Kamera sat i CQL-feltet'); } catch (x) {} }
   }
   sync();
@@ -3193,21 +3198,78 @@ private val CQL_WATCH_JS = """
 (function () {
   if (window.__cnfcCqlWatch) return;
   window.__cnfcCqlWatch = true;
-  var H = window.__cnfc, last = null;
+  var H = window.__cnfc, last = null, logged = false;
+  if (window.__cnfcRfidOff === undefined) window.__cnfcRfidOff = false;
+  function cqlField() {
+    var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
+    for (var i = 0; i < ls.length; i++) {
+      if (H.textOf(ls[i]).replace(/\*/g, '').trim() !== 'CQL') continue;
+      var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field');
+      if (ff && ff.querySelector('input, textarea')) return ff;
+    }
+    return null;
+  }
+  // RFID-ikon i feltet som Ciceros eget ved Materialenummer: blå cirkel med bølger = slået til, grå = slået fra.
+  // Et tryk slår opslaget fra og til.
+  function paint(b) {
+    var on = !window.__cnfcRfidOff;
+    b.firstChild.style.background = on ? '#1E88E5' : 'rgba(128,128,128,0.35)';
+    b.setAttribute('aria-label', on ? 'RFID-opslag er slået til' : 'RFID-opslag er slået fra');
+  }
+  function make(ic) {
+    var r = ic ? ic.getBoundingClientRect() : { width: 24, height: 24 };
+    var w = Math.round(r.width) || 24, h = Math.round(r.height) || 24, d = Math.round(Math.max(w, h) * 1.25);
+    var b = document.createElement('span');
+    b.setAttribute('role', 'button');
+    b.setAttribute('data-cnfc', 'cqlrfid');
+    b.style.cssText = 'display:inline-flex;flex:none;align-items:center;justify-content:center;width:' + d + 'px;height:' + d + 'px;' +
+      'margin:0 0 0 16px;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;';
+    b.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%">' +
+      '<svg width="70%" height="70%" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" style="display:block">' +
+      '<circle cx="12" cy="12" r="2.2" fill="#fff" stroke="none"/>' +
+      '<path d="M15.5 8.5a5 5 0 0 1 0 7M8.5 8.5a5 5 0 0 0 0 7M18.4 5.6a9 9 0 0 1 0 12.8M5.6 5.6a9 9 0 0 0 0 12.8"/></svg></span>';
+    paint(b);
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      window.__cnfcRfidOff = !window.__cnfcRfidOff;
+      paint(b);
+      last = null; sync();
+      try { CiceroNFC.tweak(window.__cnfcRfidOff ? 'RFID-opslag i CQL slået fra (ikonet)' : 'RFID-opslag i CQL slået til (ikonet)'); } catch (x) {}
+    }, true);
+    return b;
+  }
+  function place(ff) {
+    if (ff.querySelector('[data-cnfc="cqlrfid"]')) return;
+    var ic = ff.querySelector('mat-icon:not([data-cnfc] *)');
+    // Yderst til højre: efter kameraet, hvis det er der, ellers efter historik-ikonet
+    var ref = ff.querySelector('[data-cnfc="cqlcam"]') || (ic ? (ic.closest('button, [role=button]') || ic) : null);
+    var b = make(ic);
+    if (ref && ref.parentElement) ref.parentElement.insertBefore(b, ref.nextSibling);
+    else (ff.querySelector('.mat-mdc-form-field-flex') || ff).appendChild(b);
+    var vis = ff.querySelector('[data-cnfc="cqlcam"]') || ic;
+    if (vis) requestAnimationFrame(function () {
+      var a = vis.getBoundingClientRect(), m = b.getBoundingClientRect();
+      var dx = 16 - (m.left - a.right);
+      if (Math.abs(dx) > 1) b.style.marginLeft = Math.max(0, 16 + dx) + 'px';
+      var dy = (a.top + a.height / 2) - (m.top + m.height / 2);
+      if (Math.abs(dy) > 1) b.style.transform = 'translateY(' + Math.round(dy) + 'px)';
+    });
+    if (!logged) { logged = true; try { CiceroNFC.tweak('RFID-ikon sat i CQL-feltet'); } catch (x) {} }
+  }
   function sync() {
     var on = false;
     if (H.cicero()) {
-      var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
-      for (var i = 0; i < ls.length && !on; i++) {
-        if (H.textOf(ls[i]).replace(/\*/g, '').trim() !== 'CQL') continue;
-        var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field');
-        on = !!ff && ff.getClientRects().length > 0;
+      var ff = cqlField();
+      if (ff && ff.getClientRects().length > 0) {
+        // Vent på kameraet (hvis det er slået til), så rækkefølgen bliver historik – kamera – RFID
+        setTimeout(function () { var f = cqlField(); if (f) place(f); }, 60);
+        on = !window.__cnfcRfidOff;
       }
     }
     if (on !== last) { last = on; try { CiceroNFC.cqlPresent(on); } catch (e) {} }
   }
   sync();
-  H.onChange(sync);
+  H.onChange(sync, '[data-cnfc="cqlrfid"]');
 })();
 """
 

@@ -61,7 +61,11 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         )
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
         /** Tegn, en tjekboks typisk læses som */
-        private const val BOX_CHARS = "Oo0□☐■◻"
+        private const val BOX_CHARS = "Oo0□☐■◻DQ"
+        /** Tegn, der næsten aldrig står alene forrest i en titel eller et navn – kun tjekbokse læses sådan */
+        private const val SURE_BOX = "□☐■◻DQ0"
+        /** "Efternavn, Fornavn" – foreslås som Forfatter */
+        private val NAME = Regex("""^\p{Lu}[\p{L}'’\-]+(?: \p{Lu}[\p{L}'’\-]+){0,3}, \p{Lu}[\p{L}.'’\- ]{0,40}$""")
     }
 
     /** Noget, der er fundet i billedet: en tekstlinje eller et nummer (numType sat) */
@@ -73,7 +77,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var still: ImageView
     private lateinit var marks: ItemsView
     private lateinit var hint: TextView
-    private lateinit var shutter: TextView
+    private lateinit var shutter: FrameLayout
+    private lateinit var shutterInner: TextView
     private lateinit var picksBox: LinearLayout
     private lateinit var pickHeader: TextView
     private lateinit var picksScroll: ScrollView
@@ -103,23 +108,36 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         still = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
         marks = ItemsView(this)
+        // Udløser som i telefonens kamera: rund knap nederst på billedet. Når billedet er taget: ↺ = nyt billede
+        shutterInner = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 26f
+            setTextColor(Color.parseColor("#202124"))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+        }
+        shutter = FrameLayout(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(90, 0, 0, 0)); setStroke(dp(4), Color.WHITE) }
+            addView(shutterInner, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER))
+            contentDescription = "Tag billede"
+            elevation = dp(4).toFloat()
+            setOnClickListener { if (frozen) retake() else capture() }
+        }
         val camBox = FrameLayout(this).apply {
             addView(preview, FrameLayout.LayoutParams(match, match))
             addView(still, FrameLayout.LayoutParams(match, match))
             addView(marks, FrameLayout.LayoutParams(match, match))
+            addView(shutter, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(14) })
         }
         hint = TextView(this).apply {
             text = "Sigt på bogen eller skærmen, og tag et billede."
             textSize = 15f
             setTextColor(tc.sub)
         }
-        shutter = pill("Tag billede", true) { if (frozen) retake() else capture() }.apply { textSize = 16f; setPadding(dp(18), dp(10), dp(18), dp(10)) }
         val actionRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(8), dp(12), dp(4))
+            setPadding(dp(16), dp(10), dp(16), dp(4))
             addView(hint, LinearLayout.LayoutParams(0, wrap, 1f))
-            addView(shutter, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(8) })
         }
         pickHeader = TextView(this).apply {
             text = "Valgt"
@@ -218,7 +236,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.setImageBitmap(bmp)
         still.visibility = View.VISIBLE
         marks.items = emptyList()
-        shutter.text = "Nyt billede"
+        shutterInner.text = "↺"
+        shutter.contentDescription = "Nyt billede"
         hint.text = "Læser billedet …"
         val img = InputImage.fromBitmap(bmp, 0)
         val tText = texts.process(img)
@@ -247,7 +266,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.setImageDrawable(null)
         picks.forEach { it.item = null }
         marks.items = emptyList()
-        shutter.text = "Tag billede"
+        shutterInner.text = ""
+        shutter.contentDescription = "Tag billede"
         hint.text = "Sigt på bogen eller skærmen, og tag et billede."
     }
 
@@ -287,10 +307,12 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                         box = Rect(b.left, box.top, box.right, box.bottom)
                     }
                 }
-                // Tjekboks som eget "ord" foran teksten
-                if (i == 0 && txt.length == 1 && txt[0] in BOX_CHARS && els.size > 1 &&
-                    els[1].boundingBox!!.left - box.right > h * 0.5f
-                ) continue
+                // Tjekboks som eget "ord" foran teksten: sikre tegn (fx "D", "0") med bare lidt luft; "O" kun med tydelig
+                // luft eller lav sikkerhed i læsningen ("O brother" har almindelig ordafstand og står stille)
+                if (i == 0 && txt.length == 1 && txt[0] in BOX_CHARS && els.size > 1) {
+                    val gap = els[1].boundingBox!!.left - box.right
+                    if ((txt[0] in SURE_BOX && gap > h * 0.15f) || gap > h * 0.5f || e.confidence < 0.6f) continue
+                }
                 if (prevRight != Int.MIN_VALUE && box.left - prevRight > h * 1.3f) { segs += cur; cur = ArrayList() }
                 cur += txt to box
                 prevRight = box.right
@@ -352,7 +374,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             rebuildPicks(); marks.invalidate()
             return
         }
-        val type = item.numType ?: "free"
+        // Numre har deres type; "Efternavn, Fornavn" foreslås som Forfatter; resten er fritekst
+        val type = item.numType ?: if (NAME.matches(item.text)) "creator" else "free"
         // Numre og tekst blandes ikke i én søgning
         if (picks.any { isNumType(it.type) != isNumType(type) }) {
             Toast.makeText(this, "Numre og tekst kan ikke søges sammen", Toast.LENGTH_SHORT).show()
