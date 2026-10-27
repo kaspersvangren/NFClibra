@@ -71,7 +71,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var tc: ToolColors
     private lateinit var preview: PreviewView
     private lateinit var still: ImageView
-    private lateinit var overlay: ItemsView
+    private lateinit var marks: ItemsView
     private lateinit var hint: TextView
     private lateinit var shutter: TextView
     private lateinit var picksBox: LinearLayout
@@ -102,11 +102,11 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
         preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         still = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
-        overlay = ItemsView(this)
+        marks = ItemsView(this)
         val camBox = FrameLayout(this).apply {
             addView(preview, FrameLayout.LayoutParams(match, match))
             addView(still, FrameLayout.LayoutParams(match, match))
-            addView(overlay, FrameLayout.LayoutParams(match, match))
+            addView(marks, FrameLayout.LayoutParams(match, match))
         }
         hint = TextView(this).apply {
             text = "Sigt på bogen eller skærmen, og tag et billede."
@@ -217,7 +217,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         frozen = true
         still.setImageBitmap(bmp)
         still.visibility = View.VISIBLE
-        overlay.items = emptyList()
+        marks.items = emptyList()
         shutter.text = "Nyt billede"
         hint.text = "Læser billedet …"
         val img = InputImage.fromBitmap(bmp, 0)
@@ -235,7 +235,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             val items = found.filter { it.numType == null || seen.add(it.text) }
             // Det, der allerede er valgt fra et tidligere billede, vises som valgt
             for (it in items) picks.firstOrNull { p -> p.item == null && normKey(p.text) == normKey(it.text) }?.let { p -> it.pick = p; p.item = it }
-            overlay.items = items
+            marks.items = items
             hint.text = if (items.isEmpty()) "Ingen tekst fundet – prøv et nyt billede, tættere på eller med lys"
             else "Tryk på det, du vil søge på."
         }
@@ -246,7 +246,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.visibility = View.GONE
         still.setImageDrawable(null)
         picks.forEach { it.item = null }
-        overlay.items = emptyList()
+        marks.items = emptyList()
         shutter.text = "Tag billede"
         hint.text = "Sigt på bogen eller skærmen, og tag et billede."
     }
@@ -349,7 +349,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         item.pick?.let { p ->
             picks.remove(p)
             item.pick = null
-            rebuildPicks(); overlay.invalidate()
+            rebuildPicks(); marks.invalidate()
             return
         }
         val type = item.numType ?: "free"
@@ -361,7 +361,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val p = Pick(item.text, type, item)
         item.pick = p
         picks += p
-        rebuildPicks(); overlay.invalidate()
+        rebuildPicks(); marks.invalidate()
         picksScroll.post { picksScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
@@ -466,7 +466,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                     pill("✕", false) {
                         picks.remove(p)
                         p.item?.pick = null
-                        rebuildPicks(); overlay.invalidate()
+                        rebuildPicks(); marks.invalidate()
                     },
                 ).forEach { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), 0, dp(3)) })
@@ -495,7 +495,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                     above.text = above.text + " " + input.text.toString().trim()
                     picks.remove(p)
                     p.item?.pick = above
-                    rebuildPicks(); overlay.invalidate()
+                    rebuildPicks(); marks.invalidate()
                 }
             }
             .show()
