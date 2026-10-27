@@ -3545,6 +3545,14 @@ private val STICKY_BUTTONS_JS = """
       return txt(b) + '|' + b.disabled + '|' + b.className;
     }).join(';');
   }
+  // Ruller alt, der er rullet, over knaprækken op til toppen (Cicero ruller i en boks, ikke hele siden)
+  function toTop(el) {
+    for (var e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      if (e.scrollTop > 0) e.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    var se = document.scrollingElement || document.documentElement;
+    if (se && se.scrollTop > 0) se.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   // Kopien af knapperne: et tryk på kopien trykker på Ciceros rigtige knap
   function refresh(st) {
     var s = sig(st.row);
@@ -3560,7 +3568,10 @@ private val STICKY_BUTTONS_JS = """
         e.preventDefault(); e.stopPropagation();
         // Knappen slås op i trykøjeblikket: Cicero kan have gentegnet rækken siden kopien blev lavet
         var o = st.row.querySelectorAll('button')[i];
+        var reset = /^nulstil${'$'}/i.test(txt(x));
         if (o && o.isConnected && !o.disabled) o.click();
+        // Nulstil ruller også siden til toppen, så man står klar ved første felt
+        if (reset) { toTop(st.row); setTimeout(function () { toTop(st.row); }, 200); }
         else if (!o || !o.isConnected) { st.target.style.display = ''; st.pill.remove(); bar = null; kick(); }
       }, true);
     });
