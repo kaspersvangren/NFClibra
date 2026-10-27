@@ -78,7 +78,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var marks: ItemsView
     private lateinit var hint: TextView
     private lateinit var shutter: FrameLayout
-    private lateinit var shutterInner: TextView
+    private lateinit var shutterInner: FrameLayout
+    private lateinit var retakeIcon: ImageView
     private lateinit var picksBox: LinearLayout
     private lateinit var pickHeader: TextView
     private lateinit var picksScroll: ScrollView
@@ -108,11 +109,15 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
         marks = ItemsView(this)
         // Udløser som i telefonens kamera: rund knap nederst på skærmen, nem at nå med tommelfingeren. Når billedet er taget: ↺ = nyt billede
-        shutterInner = TextView(this).apply {
-            gravity = Gravity.CENTER
-            textSize = 26f
-            setTextColor(tc.bg)
+        // ↺ som ikon (ikke tegn), så den står præcis i midten
+        retakeIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_menu_reload)
+            imageTintList = android.content.res.ColorStateList.valueOf(tc.bg)
+            visibility = View.INVISIBLE
+        }
+        shutterInner = FrameLayout(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.fg) }
+            addView(retakeIcon, FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
         }
         shutter = FrameLayout(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT); setStroke(dp(4), tc.fg) }
@@ -206,7 +211,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         still.visibility = View.VISIBLE
         marks.items = emptyList()
         controls.liveControls(false)
-        shutterInner.text = "↺"
+        retakeIcon.visibility = View.VISIBLE
         shutter.contentDescription = "Nyt billede"
         hint.text = "Læser billedet …"
         val img = InputImage.fromBitmap(bmp, 0)
@@ -237,7 +242,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         picks.forEach { it.item = null }
         marks.items = emptyList()
         controls.liveControls(true)
-        shutterInner.text = ""
+        retakeIcon.visibility = View.INVISIBLE
         shutter.contentDescription = "Tag billede"
         hint.text = "Sigt på bogen eller skærmen, og tag et billede."
     }

@@ -141,12 +141,14 @@ class GuideActivity : LockedScreen() {
         textView.text = p.text
         backBtn.text = if (i == 0) "Spring over" else "Tilbage"
         nextBtn.text = if (i == pages.size - 1) "Færdig" else "Næste"
+        // Sidetal i stedet for prikker – der er blevet for mange sider til prikker
         dots.removeAllViews()
-        for (k in pages.indices) {
-            dots.addView(View(this).apply {
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (k == i) tc.blue else tc.key) }
-            }, LinearLayout.LayoutParams(dp(8), dp(8)).apply { setMargins(dp(4), 0, dp(4), 0) })
-        }
+        dots.addView(TextView(this).apply {
+            text = "${i + 1} / ${pages.size}"
+            textSize = 14f
+            setTextColor(tc.sub)
+            gravity = Gravity.CENTER
+        })
     }
 
     // ---------- Animationer ----------
@@ -891,9 +893,9 @@ class GuideActivity : LockedScreen() {
         },
         Page(
             "Søg med kamera eller bog",
-            "I katalogsøgningen har CQL-feltet et kamera. Tag et billede af bogen eller skærmen, og tryk på det, du vil søge på – " +
-                "titel, forfatter, faust eller ISBN. Under Valgt sætter du typen, og så søger du. Holder du en bog mod telefonen, " +
-                "mens CQL-feltet er fremme, slås den op med det samme.",
+            "I katalogsøgningen har CQL-feltet et kamera. Tag et billede af bogen eller skærmen, og tryk på det, du vil søge på. " +
+                "Søg med det samme som fritekst – eller angiv, om det er en titel, forfatter, faust eller ISBN, og søg på flere ting " +
+                "på én gang. Holder du en bog mod telefonen, mens CQL-feltet er fremme, slås den op med det samme.",
         ) {
             val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
             val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -955,7 +957,8 @@ class GuideActivity : LockedScreen() {
         Page(
             "Din egen bundmenu",
             "Under Indstillinger → Indret bundmenu vælger du, hvilke fire funktioner der står i Ciceros bundmenu, og i hvilken " +
-                "rækkefølge – også Opgaver, Nyheder, Hjælp og de andre fra …-menuen. Det, du flytter ud, ligger øverst under ….",
+                "rækkefølge – også Opgaver, Nyheder, Hjælp og de andre fra menuen med de tre prikker. Det, du flytter ud af " +
+                "bundmenuen, finder du øverst i den menu.",
         ) {
             val names = listOf("Katalog", "Lånere", "Udlån", "Reserv.")
             val slots = names.map { t ->
