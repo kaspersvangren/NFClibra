@@ -1,5 +1,6 @@
 # Ændringer
 
+- **Næste version 0.6.10** – Guidens side om at søge med kamera eller bog er kortere, så teksten kan være der.
 - **0.6.9** (125) – Nulstil i pillen ruller også siden til toppen, så man står klar ved første felt. Kameraet til materialenumre holder de fundne numre fremme i 4 sekunder (før 1½), efter de sidst blev set.
 - **0.6.8** (124) – Rettet: CQL-kameraet viste et beskåret, zoomet billede, når telefonen blev lagt ned, og fotoet blev ikke det, man så i rammen. Kameraet startes nu forfra, når telefonen vendes, så rammen viser hele bredden, og fotoet er det samme som rammen. Zoom bevares, når telefonen vendes.
 - **0.6.7** (123) – CQL-kameraet liggende: billedet fylder omkring to tredjedele af bredden, knapperne står i én smal kolonne i højre side, og de valgte linjer har teksten øverst og knapperne under. CQL fra skærmen: anførselstegn sættes kun, hvor de stod, eller hvor værdien har mellemrum (sp=dan bliver stående), og et "=", der er læst helt væk foran anførselstegn (bfi"Hovedbiblioteket"), sættes ind igen.
