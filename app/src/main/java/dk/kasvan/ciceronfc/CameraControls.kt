@@ -55,25 +55,61 @@ class CameraControls(
         setOnClickListener { onClose() }
     }
 
-    /** Hele panelet – lægges nederst på skærmen */
-    val panel: LinearLayout = LinearLayout(activity).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(dp(16), dp(8), dp(16), dp(12))
-        addView(zoomRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        addView(LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(torchBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
-            addView(Space(activity), LinearLayout.LayoutParams(0, 1, 1f))
-            if (center != null) addView(center, LinearLayout.LayoutParams(dp(72), dp(72)))
-            else addView(Space(activity), LinearLayout.LayoutParams(dp(72), dp(52)))
-            addView(Space(activity), LinearLayout.LayoutParams(0, 1, 1f))
-            addView(closeBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+    private val centerView = center
+    private val buttons = LinearLayout(activity)
+    private var vertical = false
+
+    /** Hele panelet – nederst på skærmen, eller i højre side når telefonen ligger ned (setVertical) */
+    val panel: LinearLayout = LinearLayout(activity)
+
+    init { arrange(); paintTorch() }
+
+    /**
+     * Liggende telefon: knapperne står lodret i højre side som i telefonens kamera (lys øverst, udløser i midten,
+     * ✕ nederst, zoom ved siden af). Stående: vandret nederst.
+     */
+    fun setVertical(v: Boolean) {
+        if (v == vertical) return
+        vertical = v
+        arrange()
     }
 
-    init { paintTorch() }
+    private fun arrange() {
+        val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
+        val match = LinearLayout.LayoutParams.MATCH_PARENT
+        panel.removeAllViews()
+        buttons.removeAllViews()
+        zoomRow.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        for (i in 0 until zoomRow.childCount) placeChip(zoomRow.getChildAt(i))
+        buttons.orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        buttons.gravity = Gravity.CENTER
+        fun gap() = Space(activity).also { buttons.addView(it, if (vertical) LinearLayout.LayoutParams(1, 0, 1f) else LinearLayout.LayoutParams(0, 1, 1f)) }
+        buttons.addView(torchBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+        gap()
+        if (centerView != null) buttons.addView(centerView, LinearLayout.LayoutParams(dp(72), dp(72)))
+        else buttons.addView(Space(activity), if (vertical) LinearLayout.LayoutParams(dp(52), dp(72)) else LinearLayout.LayoutParams(dp(72), dp(52)))
+        gap()
+        buttons.addView(closeBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+        if (vertical) {
+            panel.orientation = LinearLayout.HORIZONTAL
+            panel.gravity = Gravity.CENTER_VERTICAL
+            panel.setPadding(dp(8), dp(12), dp(12), dp(12))
+            panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
+            panel.addView(buttons, LinearLayout.LayoutParams(wrap, match).apply { marginStart = dp(10) })
+        } else {
+            panel.orientation = LinearLayout.VERTICAL
+            panel.gravity = Gravity.CENTER_HORIZONTAL
+            panel.setPadding(dp(16), dp(8), dp(16), dp(12))
+            panel.addView(zoomRow, LinearLayout.LayoutParams(wrap, wrap))
+            panel.addView(buttons, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(10) })
+        }
+    }
+
+    private fun placeChip(v: View) {
+        v.layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+            if (vertical) setMargins(0, dp(2), 0, dp(2)) else setMargins(dp(2), 0, dp(2), 0)
+        }
+    }
 
     private fun roundButton(label: String) = FrameLayout(activity).apply {
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tc.key) }
@@ -101,7 +137,8 @@ class CameraControls(
                     setOnClickListener { setZoom(z) }
                 }
                 chips[z] = t
-                zoomRow.addView(t, LinearLayout.LayoutParams(dp(46), dp(46)).apply { setMargins(dp(2), 0, dp(2), 0) })
+                zoomRow.addView(t)
+                placeChip(t)
             }
             zoomRow.visibility = if (levels.size > 1) View.VISIBLE else View.INVISIBLE
             setZoom(if (defaultZoom in levels) defaultZoom else 1f)

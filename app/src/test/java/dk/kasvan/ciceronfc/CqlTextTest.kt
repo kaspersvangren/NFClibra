@@ -15,6 +15,14 @@ class CqlTextTest {
     }
 
     @Test
+    fun ukendte_koder_og_filtre_rettes_og_bai_tages_fra() {
+        val want = "(sp=\"dan\" and usa and historie) and ((bhs=\"OnShelf\" OR bhs=\"NotForLoan\") AND ((bfi=\"Hovedbiblioteket\")))"
+        assertEquals(want, CqlText.repair("CQL: (sp=dan and usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi=\"Hovedbiblioteket\")) and bai=715900)"))
+        // Samme linje læst med "-" i stedet for "="
+        assertEquals(want, CqlText.repair("CQL: (sp-dan and usa and historie) and ((bhs-OnShelf OR bhs-NotForLoan) AND ((bfi-\"Hovedbiblioteket\")) and bai-715900)"))
+    }
+
+    @Test
     fun korrekt_linje_beholdes_uden_bai() {
         val raw = "CQL: (ti=\"*på flugt i sibirien*\" AND fo=\"rane willerslev*\") and (bai=715900)"
         assertEquals("ti=\"*på flugt i sibirien*\" AND fo=\"rane willerslev*\"", CqlText.repair(raw))

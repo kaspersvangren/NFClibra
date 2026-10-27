@@ -5,8 +5,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
@@ -26,6 +28,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
@@ -37,6 +42,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.util.concurrent.Executors
 
 /**
  * Kamera til Ciceros CQL-søgning – med stillbillede: man sigter og tager et billede, app'en læser det én gang og
@@ -65,6 +71,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         /** Tegn, der næsten aldrig står alene forrest i en titel eller et navn – kun tjekbokse læses sådan */
         private const val SURE_BOX = "□☐■◻DQ0"
         /** "Efternavn, Fornavn" – foreslås som Forfatter */
+        /** Billedet læses i høj opløsning (længste side), så små bogstaver på en skærm kan læses */
+        private const val MAX_SIDE = 3200
         private val NAME = Regex("""^\p{Lu}[\p{L}'’\-]+(?: \p{Lu}[\p{L}'’\-]+){0,3}, \p{Lu}[\p{L}.'’\- ]{0,40}$""")
     }
 
@@ -87,6 +95,10 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var searchAll: TextView
     private var controller: LifecycleCameraController? = null
     private lateinit var controls: CameraControls
+    private lateinit var root: LinearLayout
+    private lateinit var camBox: FrameLayout
+    private lateinit var side: LinearLayout
+    private val worker = Executors.newSingleThreadExecutor()
     private var frozen = false
     private var busy = false
     private val picks = ArrayList<Pick>()
@@ -106,7 +118,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
 
         preview = PreviewView(this).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
-        still = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
+        // Samme beskæring som kameraets billede (fyld og centrér), så markeringerne passer
+        still = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; visibility = View.GONE }
         marks = ItemsView(this)
         // Udløser som i telefonens kamera: rund knap nederst på skærmen, nem at nå med tommelfingeren. Når billedet er taget: ↺ = nyt billede
         // ↺ som ikon (ikke tegn), så den står præcis i midten
@@ -125,7 +138,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             contentDescription = "Tag billede"
             setOnClickListener { if (frozen) retake() else capture() }
         }
-        val camBox = FrameLayout(this).apply {
+        camBox = FrameLayout(this).apply {
             addView(preview, FrameLayout.LayoutParams(match, match))
             addView(still, FrameLayout.LayoutParams(match, match))
             addView(marks, FrameLayout.LayoutParams(match, match))
@@ -162,25 +175,59 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         searchAll = pill("Søg", true) { if (picks.isNotEmpty()) finishWith(cqlOfPicks()) }.apply { visibility = View.INVISIBLE }
         // Lys, udløser og ✕ nederst ved tommelfingeren, zoom lige over – ens med kameraet til materialenumre
         controls = CameraControls(this, tc, 1f, shutter) { finish() }
-        val root = LinearLayout(this).apply {
+        side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(tc.bg)
-            fitsSystemWindows = true
-            // Billedet fylder halvdelen af skærmen, så linjerne er til at ramme med fingeren
-            addView(camBox, LinearLayout.LayoutParams(match, (resources.displayMetrics.heightPixels * 0.48f).toInt()))
             addView(actionRow)
             addView(pickHeader)
             addView(picksScroll, LinearLayout.LayoutParams(match, 0, 1f))
             addView(cqlPreview)
-            addView(searchAll, LinearLayout.LayoutParams(match, wrap).apply { setMargins(dp(12), dp(6), dp(12), 0) })
-            addView(controls.panel, LinearLayout.LayoutParams(match, wrap))
+            addView(searchAll, LinearLayout.LayoutParams(match, wrap).apply { setMargins(dp(12), dp(6), dp(12), dp(4)) })
         }
+        root = LinearLayout(this).apply {
+            setBackgroundColor(tc.bg)
+            fitsSystemWindows = true
+            addView(camBox)
+            addView(side)
+        }
+        arrange()
         setContentView(root)
         window.statusBarColor = tc.bg
         window.navigationBarColor = tc.bg
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCamera()
         else askCamera.launch(Manifest.permission.CAMERA)
+    }
+
+    /**
+     * Stående: billedet øverst (halvdelen af skærmen), valgene under og knapperne nederst.
+     * Liggende: billedet til venstre (større tekst – lange linjer på en skærm kan læses), valgene i midten
+     * og knapperne lodret i højre side ved tommelfingeren.
+     */
+    private fun arrange() {
+        val match = LinearLayout.LayoutParams.MATCH_PARENT
+        val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
+        val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        (controls.panel.parent as? android.view.ViewGroup)?.removeView(controls.panel)
+        controls.setVertical(land)
+        if (land) {
+            root.orientation = LinearLayout.HORIZONTAL
+            camBox.layoutParams = LinearLayout.LayoutParams(0, match, 1.15f)
+            side.layoutParams = LinearLayout.LayoutParams(0, match, 1f)
+            root.addView(controls.panel, LinearLayout.LayoutParams(wrap, match))
+            cqlPreview.maxLines = 2
+        } else {
+            root.orientation = LinearLayout.VERTICAL
+            camBox.layoutParams = LinearLayout.LayoutParams(match, (resources.displayMetrics.heightPixels * 0.48f).toInt())
+            side.layoutParams = LinearLayout.LayoutParams(match, 0, 1f)
+            side.addView(controls.panel, LinearLayout.LayoutParams(match, wrap))
+            cqlPreview.maxLines = 3
+        }
+    }
+
+    // Telefonen vendes: samme skærm (valg og billede bevares), kun placeringen ændres
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        arrange()
     }
 
     private fun startCamera() {
@@ -202,18 +249,61 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     // ---------- Billedet ----------
 
+    /**
+     * Billedet fryses med det samme (det, man så), og der tages et rigtigt foto i fuld opløsning, som læses –
+     * små bogstaver (fx en lang CQL-linje på en skærm) læses langt bedre end fra forhåndsvisningen.
+     */
     private fun capture() {
         if (busy) return
-        val bmp: Bitmap = preview.bitmap ?: run { hint.text = "Kameraet er ikke klar endnu – prøv igen"; return }
+        val quick: Bitmap = preview.bitmap ?: run { hint.text = "Kameraet er ikke klar endnu – prøv igen"; return }
         busy = true
         frozen = true
-        still.setImageBitmap(bmp)
+        still.setImageBitmap(quick)
         still.visibility = View.VISIBLE
         marks.items = emptyList()
         controls.liveControls(false)
         retakeIcon.visibility = View.VISIBLE
         shutter.contentDescription = "Nyt billede"
         hint.text = "Læser billedet …"
+        val c = controller ?: run { read(quick); return }
+        try {
+            c.takePicture(worker, object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    val bmp = try { upright(image) } catch (e: Throwable) {
+                        LogBuf.add("CQL-kamera: foto kunne ikke læses (${e.javaClass.simpleName}) – bruger forhåndsvisningen"); null
+                    } finally { image.close() }
+                    runOnUiThread {
+                        if (!frozen || isFinishing) { busy = false; return@runOnUiThread }
+                        if (bmp != null) still.setImageBitmap(bmp)
+                        read(bmp ?: quick)
+                    }
+                }
+                override fun onError(e: ImageCaptureException) {
+                    LogBuf.add("CQL-kamera: foto fejlede (${e.imageCaptureError}) – bruger forhåndsvisningen")
+                    runOnUiThread { if (frozen && !isFinishing) read(quick) else busy = false }
+                }
+            })
+        } catch (e: Exception) {
+            LogBuf.add("CQL-kamera: foto kunne ikke tages (${e.javaClass.simpleName}) – bruger forhåndsvisningen")
+            read(quick)
+        }
+    }
+
+    /** Fotoet vendt rigtigt og skaleret ned til højst MAX_SIDE på den længste led */
+    private fun upright(image: ImageProxy): Bitmap {
+        val src = image.toBitmap()
+        val rot = image.imageInfo.rotationDegrees
+        val long = maxOf(src.width, src.height)
+        val sc = if (long > MAX_SIDE) MAX_SIDE.toFloat() / long else 1f
+        if (rot == 0 && sc == 1f) return src
+        val m = Matrix().apply { postScale(sc, sc); postRotate(rot.toFloat()) }
+        val out = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+        if (out !== src) src.recycle()
+        return out
+    }
+
+    /** Læser tekst og stregkoder i billedet og markerer det fundne (kun det, der kan ses i rammen) */
+    private fun read(bmp: Bitmap) {
         val img = InputImage.fromBitmap(bmp, 0)
         val tText = texts.process(img)
         val tCodes = barcodes.process(img)
@@ -224,9 +314,10 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             if (tCodes.isSuccessful) tCodes.result?.let { addBarcodes(it, found) }
             if (tText.isSuccessful) tText.result?.let { addText(it, found) }
             else LogBuf.add("Tekstgenkendelse fejlede: ${tText.exception?.message}")
-            // Samme nummer fundet både som stregkode og som tal: kun én gang
+            marks.setImage(bmp.width, bmp.height)
+            // Samme nummer fundet både som stregkode og som tal: kun én gang. Fotoet er lidt større end rammen: kun det synlige
             val seen = HashSet<String>()
-            val items = found.filter { it.numType == null || seen.add(it.text) }
+            val items = found.filter { marks.visible(it.rect) && (it.numType == null || seen.add(it.text)) }
             // Det, der allerede er valgt fra et tidligere billede, vises som valgt
             for (it in items) picks.firstOrNull { p -> p.item == null && normKey(p.text) == normKey(it.text) }?.let { p -> it.pick = p; p.item = it }
             marks.items = items
@@ -540,6 +631,28 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private inner class ItemsView(ctx: Context) : View(ctx) {
         var items: List<Item> = emptyList()
             set(v) { field = v; invalidate() }
+        // Billedets størrelse: markeringerne står i billedets koordinater og vises med samme beskæring som billedet
+        private var imgW = 0
+        private var imgH = 0
+
+        fun setImage(w: Int, h: Int) { imgW = w; imgH = h; invalidate() }
+
+        /** Skala og forskydning fra billedet til skærmen (fyld og centrér, som CENTER_CROP) */
+        private fun scale() = if (imgW <= 0 || imgH <= 0 || width == 0) 1f else maxOf(width.toFloat() / imgW, height.toFloat() / imgH)
+        private fun toView(r: RectF): RectF {
+            if (imgW <= 0 || width == 0) return RectF(r)
+            val sc = scale()
+            val dx = (width - imgW * sc) / 2f
+            val dy = (height - imgH * sc) / 2f
+            return RectF(r.left * sc + dx, r.top * sc + dy, r.right * sc + dx, r.bottom * sc + dy)
+        }
+
+        /** Står midten af det fundne inden for rammen? */
+        fun visible(r: RectF): Boolean {
+            if (width == 0) return true
+            val v = toView(r)
+            return v.centerX() in 0f..width.toFloat() && v.centerY() in 0f..height.toFloat()
+        }
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2).toFloat() }
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         private val pad = dp(4).toFloat()
@@ -547,7 +660,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
         override fun onDraw(canvas: Canvas) {
             for (it in items) {
-                val r = RectF(it.rect.left - pad, it.rect.top - pad, it.rect.right + pad, it.rect.bottom + pad)
+                val v = toView(it.rect)
+                val r = RectF(v.left - pad, v.top - pad, v.right + pad, v.bottom + pad)
                 val on = it.pick != null
                 fill.color = if (on) Color.argb(110, Color.red(tc.blue), Color.green(tc.blue), Color.blue(tc.blue)) else Color.argb(40, 255, 255, 255)
                 stroke.color = if (on) tc.blue else Color.argb(220, 255, 255, 255)
@@ -562,8 +676,9 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             if (items.isEmpty()) return false // ingen billede: tryk går videre til kameraet (skarpt billede)
             if (e.actionMasked == MotionEvent.ACTION_UP) {
                 val slack = dp(10).toFloat()
-                items.filter { RectF(it.rect.left - slack, it.rect.top - slack, it.rect.right + slack, it.rect.bottom + slack).contains(e.x, e.y) }
-                    .minByOrNull { it.rect.width() * it.rect.height() }
+                items.map { it to toView(it.rect) }
+                    .filter { (_, v) -> RectF(v.left - slack, v.top - slack, v.right + slack, v.bottom + slack).contains(e.x, e.y) }
+                    .minByOrNull { (_, v) -> v.width() * v.height() }?.first
                     ?.let { toggle(it) }
             }
             return true
@@ -594,5 +709,6 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     override fun onDestroy() {
         super.onDestroy()
         try { barcodes.close(); texts.close() } catch (_: Exception) {}
+        worker.shutdown()
     }
 }

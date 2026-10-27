@@ -52,10 +52,12 @@
 
         <activity
             android:name=".ScanActivity"
+            android:screenOrientation="portrait"
             android:exported="false" />
 
         <activity
             android:name=".CqlScanActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:exported="false" />
 
         <!-- Play-tjenester henter tekst- og stregkodegenkendelsen allerede ved installation -->
