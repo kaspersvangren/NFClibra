@@ -643,16 +643,26 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 }
                 val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
                 if (land) {
-                    // Liggende er der smalt: typen og "Søg nu" deler bredden, ✕ har fast plads – intet bliver klemt
-                    for (c in listOf(typeChip, searchNow, remove)) {
+                    // Liggende er der smalt: "Søg nu" bliver et forstørrelsesglas, og ✕ har fast plads, så typen
+                    // ("Materialenr.", "Forfatter" …) får resten af bredden – intet bliver klemt
+                    for (c in listOf(typeChip, remove)) {
                         c.textSize = 13f
                         c.maxLines = 1
                         c.ellipsize = android.text.TextUtils.TruncateAt.END
                         c.setPadding(dp(6), dp(6), dp(6), dp(6))
                     }
+                    val searchIcon = FrameLayout(this@CqlScanActivity).apply {
+                        background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(2), tc.blue); cornerRadius = dp(18).toFloat() }
+                        contentDescription = "Søg nu"
+                        setOnClickListener { finishWith(cqlOf(p.text, p.type)) }
+                        addView(ImageView(this@CqlScanActivity).apply {
+                            setImageResource(R.drawable.ic_search)
+                            imageTintList = android.content.res.ColorStateList.valueOf(tc.blue)
+                        }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+                    }
                     chipRow.addView(typeChip, LinearLayout.LayoutParams(0, wrap, 1f))
-                    chipRow.addView(searchNow, LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(6) })
-                    chipRow.addView(remove, LinearLayout.LayoutParams(dp(40), wrap).apply { marginStart = dp(6) })
+                    chipRow.addView(searchIcon, LinearLayout.LayoutParams(dp(44), dp(34)).apply { marginStart = dp(6) })
+                    chipRow.addView(remove, LinearLayout.LayoutParams(dp(40), dp(34)).apply { marginStart = dp(6) })
                 } else {
                     listOf(typeChip, searchNow, remove).forEach {
                         chipRow.addView(it, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(6) })
