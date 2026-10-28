@@ -16,22 +16,22 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileRelease
 > Task :app:javaPreCompileReleaseUnitTest
 > Task :app:processReleaseManifestForPackage
-> Task :app:javaPreCompileRelease
 > Task :app:mergeReleaseJniLibFolders
 > Task :app:mergeReleaseNativeLibs
 > Task :app:desugarReleaseFileDependencies
-> Task :app:mergeReleaseStartupProfile
 > Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseStartupProfile
 
 > Task :app:stripReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libsurface_util_jni.so.
 
-> Task :app:mergeReleaseArtProfile
 > Task :app:extractReleaseNativeSymbolTables
-> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:processReleaseResources
+> Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
@@ -51,29 +51,29 @@ w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/cicero
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:214:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:109:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:110:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2155:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:136:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:137:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2160:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:138:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:139:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:335:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
 > Task :app:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app:processReleaseJavaRes
 > Task :app:bundleReleaseClassesToRuntimeJar
 > Task :app:bundleReleaseClassesToCompileJar
-> Task :app:processReleaseJavaRes
-> Task :app:compileReleaseUnitTestKotlin
 > Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:mergeReleaseJavaResource
+> Task :app:compileReleaseUnitTestKotlin
 > Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
 > Task :app:processReleaseUnitTestJavaRes
 > Task :app:testReleaseUnitTest
-> Task :app:mergeReleaseGlobalSynthetics
-> Task :app:mergeReleaseJavaResource
 > Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793197030965.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793197907584.json
 
-BUILD SUCCESSFUL in 34s
+BUILD SUCCESSFUL in 41s
 49 actionable tasks: 49 executed
