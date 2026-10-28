@@ -27,6 +27,7 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.ExecutorService
@@ -48,6 +49,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private class Candidate(val value: String, val barcode: Boolean, var lastSeen: Long, var hits: Int) {
         var clean = 0      // set uden bindestreg/mellemrum
         var isbnHint = false
+        var qr = false
     }
 
     private lateinit var executor: ExecutorService
@@ -69,9 +71,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private val itemLen by lazy { Hub.itemLength() }
     private lateinit var camBox: FrameLayout
     private val nfc by lazy { NfcAdapter.getDefaultAdapter(this) }
-    // Sigte-rammens størrelse på skærmen
-    private val frameW get() = dp(300)
-    private val frameH get() = dp(140)
+    // Sigte-rammens størrelse på skærmen: bred til stregkoder på bøger, kvadratisk til lånernummeret (QR-kode fra pc'en)
+    private val patron by lazy { intent.getBooleanExtra(EXTRA_PATRON, false) }
+    private val frameW get() = if (patron) dp(240) else dp(300)
+    private val frameH get() = if (patron) dp(240) else dp(140)
 
     private val barcodes by lazy { BarcodeScanning.getClient() }
     private val texts by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
@@ -177,7 +180,10 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val now = SystemClock.elapsedRealtime()
         r.getValue(barcodes)?.forEach { b ->
             val v = b.rawValue?.trim() ?: return@forEach
-            if (inFrame(b.boundingBox) && v.length in 1..16 && v.all { it.code in 0x21..0x7E }) add(v, true, now, true, false)
+            if (inFrame(b.boundingBox) && v.length in 1..16 && v.all { it.code in 0x21..0x7E }) {
+                add(v, true, now, true, false)
+                if (b.format == Barcode.FORMAT_QR_CODE) synchronized(candidates) { candidates[v]?.qr = true }
+            }
         }
         val text = r.getValue(texts)
         if (text != null) {
@@ -317,6 +323,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private fun kindOf(c: Candidate) = when {
         isIsbn(c) -> "ISBN"
         tier(c) == 2 -> "andet tal"
+        c.qr -> "QR-kode"
         c.barcode -> "stregkode"
         else -> "tal"
     }
