@@ -44,6 +44,8 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         /** Åbnet fra Låner-feltet: teksten taler om lånernummer (QR-kode fra pc'en, stregkode på lånerkortet) */
         const val EXTRA_PATRON = "patron"
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
+        /** Lånernummer som tekst: evt. et par bogstaver foran og så tal, højst 10 tegn i alt (fx C036881573) */
+        private val PATRON = Regex("""(?<![A-Za-z0-9])[A-Za-z]{0,2}[0-9]{4,10}(?![A-Za-z0-9])""")
     }
 
     private class Candidate(val value: String, val barcode: Boolean, var lastSeen: Long, var hits: Int) {
@@ -190,6 +192,14 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             for (block in text.textBlocks) for (line in block.lines) {
                 if (!inFrame(line.boundingBox)) continue
                 val isbnLine = line.text.contains("ISBN", ignoreCase = true)
+                if (patron) {
+                    // Lånernummeret med bogstav foran læses hele (ellers blev C036881573 til 036881573)
+                    for (m in PATRON.findAll(line.text)) {
+                        val v = m.value.uppercase()
+                        if (v.length in 5..10) add(v, false, now, true, false)
+                    }
+                    continue
+                }
                 for (m in DIGITS.findAll(line.text)) {
                     val v = m.value.filter { it.isDigit() }
                     if (v.length in 8..16) add(v, false, now, m.value.all { it.isDigit() }, isbnLine)
