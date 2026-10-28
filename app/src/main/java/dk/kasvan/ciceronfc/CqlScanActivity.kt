@@ -636,14 +636,28 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                     addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                     addView(chipRow)
                 }
-                listOf(
-                    typeChip,
-                    pill("Søg nu", false) { finishWith(cqlOf(p.text, p.type)) },
-                    pill("✕", false) {
-                        unpick(p)
-                        rebuildPicks(); marks.invalidate()
-                    },
-                ).forEach { chipRow.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
+                val searchNow = pill("Søg nu", false) { finishWith(cqlOf(p.text, p.type)) }
+                val remove = pill("✕", false) {
+                    unpick(p)
+                    rebuildPicks(); marks.invalidate()
+                }
+                val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
+                if (land) {
+                    // Liggende er der smalt: typen og "Søg nu" deler bredden, ✕ har fast plads – intet bliver klemt
+                    for (c in listOf(typeChip, searchNow, remove)) {
+                        c.textSize = 13f
+                        c.maxLines = 1
+                        c.ellipsize = android.text.TextUtils.TruncateAt.END
+                        c.setPadding(dp(6), dp(6), dp(6), dp(6))
+                    }
+                    chipRow.addView(typeChip, LinearLayout.LayoutParams(0, wrap, 1f))
+                    chipRow.addView(searchNow, LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(6) })
+                    chipRow.addView(remove, LinearLayout.LayoutParams(dp(40), wrap).apply { marginStart = dp(6) })
+                } else {
+                    listOf(typeChip, searchNow, remove).forEach {
+                        chipRow.addView(it, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(6) })
+                    }
+                }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), 0, dp(3)) })
         }
     }
