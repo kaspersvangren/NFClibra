@@ -1526,6 +1526,13 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             runOnUiThread { if (!Hub.locked && tweakOn(TW_CAM)) openItemScanner() }
         }
 
+        /** Ciceros kamera-knap i Låner-feltet: NFClibras kamera læser lånernummeret (feltet er valgt i forvejen) */
+        @JavascriptInterface
+        fun scanPatron() {
+            if (pageHost != CICERO_HOST) return
+            runOnUiThread { if (!Hub.locked && tweakOn(TW_CAM)) openItemScanner(forPatron = true) }
+        }
+
         /** "Tags"-knappen i Ciceros bjælke */
         @JavascriptInterface
         fun openTool() {
@@ -2887,6 +2894,16 @@ private val CAMERA_SWAP_JS = """
     var ff = fieldOf(b);
     if (!ff) return;
     var label = labelOf(ff), t = label.toLowerCase().replace(/[^a-zæøå]/g, '');
+    // Låner-feltet: NFClibras kamera læser lånernummeret (QR-kode fra pc'en, stregkode på lånerkortet)
+    if (/^l[åa]ner/.test(t)) {
+      var pin = ff.querySelector('input');
+      if (!pin) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      window.__cnfcKeysEl = pin;
+      log('Ciceros kamera-knap i Låner åbner NFClibras kamera');
+      try { CiceroNFC.scanPatron(); } catch (x) {}
+      return;
+    }
     if (!/^materialen(umme)?r/.test(t)) {
       log('Kamera-knap i feltet "' + label.replace(/\d+/g, '').trim().slice(0, 30) + '" – Ciceros eget kamera bruges');
       return;

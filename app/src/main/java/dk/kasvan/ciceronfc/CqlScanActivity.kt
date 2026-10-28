@@ -73,6 +73,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         /** "Efternavn, Fornavn" – foreslås som Forfatter */
         /** Billedet læses i høj opløsning (længste side), så små bogstaver på en skærm kan læses */
         private const val MAX_SIDE = 3200
+        /** Mindre udgave til stregkoder og QR-koder (mindre moiré fra skærme) */
+        private const val SMALL_SIDE = 1280
         private val NAME = Regex("""^\p{Lu}[\p{L}'’\-]+(?: \p{Lu}[\p{L}'’\-]+){0,3}, \p{Lu}[\p{L}.'’\- ]{0,40}$""")
     }
 
@@ -341,17 +343,28 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         val img = InputImage.fromBitmap(bmp, 0)
         val tText = texts.process(img)
         val tCodes = barcodes.process(img)
-        Tasks.whenAllComplete(tText, tCodes).addOnCompleteListener(ContextCompat.getMainExecutor(this)) {
+        // Stregkoder og QR-koder læses også i en mindre udgave af billedet: på et foto af en skærm giver skærmens
+        // striber (moiré) i fuld opløsning ofte en QR-kode, der ikke kan læses – mindre billede, færre striber
+        val long = maxOf(bmp.width, bmp.height)
+        val scale = if (long > SMALL_SIDE) SMALL_SIDE.toFloat() / long else 1f
+        val small = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else null
+        val tSmall = small?.let { barcodes.process(InputImage.fromBitmap(it, 0)) }
+        Tasks.whenAllComplete(listOfNotNull(tText, tCodes, tSmall)).addOnCompleteListener(ContextCompat.getMainExecutor(this)) {
             busy = false
             if (!frozen || isFinishing) return@addOnCompleteListener
             val found = ArrayList<Item>()
-            if (tCodes.isSuccessful) tCodes.result?.let { addBarcodes(it, found) }
+            val codes = ArrayList<Barcode>()
+            if (tCodes.isSuccessful) tCodes.result?.let { codes += it; addBarcodes(it, found, 1f) }
+            if (tSmall?.isSuccessful == true) tSmall.result?.let { codes += it; addBarcodes(it, found, 1f / scale) }
+            // Kun antal og slags til loggen – aldrig indholdet
+            if (codes.isNotEmpty()) LogBuf.add("CQL-kamera: ${codes.size} kode(r) i billedet (" +
+                codes.map { if (it.format == Barcode.FORMAT_QR_CODE) "QR" else "stregkode" }.distinct().joinToString() + ")")
             if (tText.isSuccessful) tText.result?.let { addText(it, found) }
             else LogBuf.add("Tekstgenkendelse fejlede: ${tText.exception?.message}")
             marks.setImage(bmp.width, bmp.height)
             // Samme nummer fundet både som stregkode og som tal: kun én gang. Fotoet er lidt større end rammen: kun det synlige
             val seen = HashSet<String>()
-            val items = found.filter { marks.visible(it.rect) && (it.numType == null || seen.add(it.text)) }
+            val items = found.filter { marks.visible(it.rect) && ((it.numType == null && !it.cql) || seen.add(it.text)) }
             // Det, der allerede er valgt fra et tidligere billede, vises som valgt
             for (it in items) picks.firstOrNull { p -> p.item == null && normKey(p.text) == normKey(it.text) }?.let { p -> it.pick = p; p.item = it }
             marks.items = items
@@ -373,18 +386,19 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         hint.text = "Sigt på bogen eller skærmen, og tag et billede."
     }
 
-    private fun addBarcodes(list: List<Barcode>, out: MutableList<Item>) {
+    /** [k]: fra koordinaterne i det billede, koden blev fundet i, til det fulde billede */
+    private fun addBarcodes(list: List<Barcode>, out: MutableList<Item>, k: Float) {
         for (b in list) {
             val v = b.rawValue?.trim() ?: continue
-            val box = b.boundingBox ?: continue
+            val box = b.boundingBox?.let { RectF(it.left * k, it.top * k, it.right * k, it.bottom * k) } ?: continue
             if (!v.all { it.isDigit() }) {
                 // QR-kode med en CQL-søgning (fx fra browserudvidelsen på pc'en): præcis, så den søges, som den står
                 val one = v.replace(Regex("\\s+"), " ")
-                if (CqlText.isCqlCode(one)) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, RectF(box), null, cql = true) }
+                if (CqlText.isCqlCode(one)) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, box, null, cql = true) }
                 continue
             }
             val type = numType(v, false) ?: continue
-            out += Item(v, RectF(box), type)
+            out += Item(v, box, type)
         }
     }
 
