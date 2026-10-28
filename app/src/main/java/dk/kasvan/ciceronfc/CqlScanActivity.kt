@@ -389,12 +389,15 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     /** [k]: fra koordinaterne i det billede, koden blev fundet i, til det fulde billede */
     private fun addBarcodes(list: List<Barcode>, out: MutableList<Item>, k: Float) {
         for (b in list) {
-            val v = b.rawValue?.trim() ?: continue
+            val v = b.rawValue?.trim()
+            if (v == null) { LogBuf.add("CQL-kamera: kode uden læsbar tekst"); continue }
             val box = b.boundingBox?.let { RectF(it.left * k, it.top * k, it.right * k, it.bottom * k) } ?: continue
             if (!v.all { it.isDigit() }) {
                 // QR-kode med en CQL-søgning (fx fra browserudvidelsen på pc'en): præcis, så den søges, som den står
                 val one = v.replace(Regex("\\s+"), " ")
                 if (CqlText.isCqlCode(one)) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, box, null, cql = true) }
+                // Kun længde og om der er et "=" – aldrig indholdet
+                else LogBuf.add("CQL-kamera: kode med ${v.length} tegn er ikke CQL (\"=\" ${if (v.contains('=')) "findes" else "mangler"})")
                 continue
             }
             val type = numType(v, false) ?: continue
