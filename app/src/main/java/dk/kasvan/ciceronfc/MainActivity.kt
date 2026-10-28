@@ -3207,10 +3207,13 @@ private val CQL_APPLY_JS = """
 (function () {
   var H = window.__cnfc, v = %CQL%;
   var el = window.__cnfcCqlEl;
-  if (!el || !document.contains(el)) {
+  // Kun et CQL-felt, der står fremme – under hver fane (Bibliografiske poster, Materialer) er der sit eget
+  if (el && (!document.contains(el) || !el.getClientRects().length)) el = null;
+  if (!el) {
     var ls = document.querySelectorAll('mat-form-field mat-label, .mat-mdc-form-field mat-label, mat-form-field label');
     for (var i = 0; i < ls.length && !el; i++) if (H.textOf(ls[i]).replace(/\*/g, '').trim() === 'CQL') {
-      var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field'); el = ff && ff.querySelector('input, textarea');
+      var ff = ls[i].closest('mat-form-field, .mat-mdc-form-field'), inp = ff && ff.querySelector('input, textarea');
+      if (inp && inp.getClientRects().length) el = inp;
     }
   }
   if (!el) return 'intet CQL-felt';

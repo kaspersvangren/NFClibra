@@ -75,6 +75,8 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private val nfc by lazy { NfcAdapter.getDefaultAdapter(this) }
     // Sigte-rammens størrelse på skærmen: bred til stregkoder på bøger, kvadratisk til lånernummeret (QR-kode fra pc'en)
     private val patron by lazy { intent.getBooleanExtra(EXTRA_PATRON, false) }
+    /** Et lånernummer fra en QR-kode er sendt tilbage – resten af billederne ignoreres */
+    @Volatile private var done = false
     private val frameW get() = if (patron) dp(240) else dp(300)
     private val frameH get() = if (patron) dp(240) else dp(140)
 
@@ -183,6 +185,17 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         r.getValue(barcodes)?.forEach { b ->
             val v = b.rawValue?.trim() ?: return@forEach
             if (inFrame(b.boundingBox) && v.length in 1..16 && v.all { it.code in 0x21..0x7E }) {
+                // Lånernummeret som QR-kode (fra pc'en) er præcist: det bruges med det samme, uden at man skal trykke
+                if (patron && b.format == Barcode.FORMAT_QR_CODE && !done) {
+                    done = true
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        Hub.vibrate(longArrayOf(0, 40))
+                        setResult(RESULT_OK, Intent().putExtra(EXTRA_VALUE, v))
+                        finish()
+                    }
+                    return
+                }
                 add(v, true, now, true, false)
                 if (b.format == Barcode.FORMAT_QR_CODE) synchronized(candidates) { candidates[v]?.qr = true }
             }
