@@ -9,14 +9,13 @@ Daemon will be stopped at the end of the build
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
-> Task :app:mergeReleaseResources
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease
 > Task :app:parseReleaseLocalResources
+> Task :app:mergeReleaseResources
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:preReleaseUnitTestBuild UP-TO-DATE
-> Task :app:processReleaseManifestForPackage
 > Task :app:javaPreCompileRelease
 > Task :app:javaPreCompileReleaseUnitTest
 > Task :app:mergeReleaseJniLibFolders
@@ -27,10 +26,10 @@ Daemon will be stopped at the end of the build
 > Task :app:stripReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libsurface_util_jni.so.
 
-> Task :app:checkReleaseDuplicateClasses
+> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseArtProfile
+> Task :app:checkReleaseDuplicateClasses
 > Task :app:extractReleaseNativeSymbolTables
-> Task :app:processReleaseResources
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
@@ -38,11 +37,12 @@ Unable to strip the following libraries, packaging them as they are: libimage_pr
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseResources
 > Task :app:collectReleaseDependencies
 > Task :app:sdkReleaseDependencyData
-> Task :app:optimizeReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
+> Task :app:optimizeReleaseResources
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:mergeExtDexRelease
 
@@ -58,22 +58,22 @@ w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/cicero
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
 > Task :app:compileReleaseJavaWithJavac NO-SOURCE
-> Task :app:processReleaseJavaRes
 > Task :app:bundleReleaseClassesToRuntimeJar
 > Task :app:bundleReleaseClassesToCompileJar
-> Task :app:dexBuilderRelease
-> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:processReleaseJavaRes
 > Task :app:compileReleaseUnitTestKotlin
+> Task :app:dexBuilderRelease
 > Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
 > Task :app:processReleaseUnitTestJavaRes
-> Task :app:mergeReleaseJavaResource
 > Task :app:testReleaseUnitTest
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:mergeReleaseJavaResource
 > Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793176229203.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793177063280.json
 
-BUILD SUCCESSFUL in 56s
+BUILD SUCCESSFUL in 39s
 49 actionable tasks: 49 executed
