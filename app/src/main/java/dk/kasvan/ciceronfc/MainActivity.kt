@@ -1706,7 +1706,12 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         handler.postDelayed({
             if (Hub.locked) return@postDelayed
             runJs(CQL_APPLY_JS.replace("%CQL%", org.json.JSONObject.quote(cql))) { r ->
-                LogBuf.add(if (r?.contains("ok") == true) "CQL-søgning fra kameraet" else "CQL-søgning fra kameraet: ${r?.trim('"')}")
+                val res = r?.trim('"') ?: ""
+                LogBuf.add(when {
+                    res == "ok" -> "CQL-søgning fra kameraet"
+                    res.startsWith("ok") -> "CQL-søgning fra kameraet – ${res.removePrefix("ok").trim(' ', '(', ')')}"
+                    else -> "CQL-søgning fra kameraet: $res"
+                })
             }
         }, 200)
     }
@@ -3211,13 +3216,19 @@ private val CQL_APPLY_JS = """
   if (!el) return 'intet CQL-felt';
   H.setValue(el, v, true);
   // Ciceros egen Søg-knap nærmest CQL-feltet (også når pillen har gemt rækken af vejen): der ledes udad fra
-  // feltet, så det er knappen i samme søgekort – ikke en anden "Søg" et andet sted på siden
+  // feltet, så det er knappen i samme søgekort – ikke en anden "Søg" et andet sted på siden, fx under en anden
+  // fane (Bibliografiske poster / Materialer), som ikke står fremme
+  function shown(b) {
+    if (b.getClientRects().length) return true;
+    var h = b.closest('[data-cnfc-hidden]');
+    return !!(h && h.parentElement && h.parentElement.getClientRects().length);
+  }
   function soeg(root) {
     var bs = root.querySelectorAll('button');
     for (var j = 0; j < bs.length; j++) {
       var b = bs[j];
       if (b.closest('[data-cnfc-bar], [data-cnfc], .cdk-overlay-container')) continue;
-      if (/^s[øo]g${'$'}/i.test(H.textOf(b)) && !b.disabled) return b;
+      if (/^s[øo]g${'$'}/i.test(H.textOf(b)) && !b.disabled && shown(b)) return b;
     }
     return null;
   }
@@ -3225,7 +3236,13 @@ private val CQL_APPLY_JS = """
     var b = soeg(a);
     if (b) { setTimeout(function () { b.click(); }, 100); return 'ok'; }
   }
-  return 'ok (Søg-knap ikke fundet – tryk selv Søg)';
+  // Ingen Søg-knap at se: Enter i feltet, som når man taster
+  setTimeout(function () {
+    ['keydown', 'keypress', 'keyup'].forEach(function (t) {
+      el.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+    });
+  }, 100);
+  return 'ok (Enter i feltet – ingen Søg-knap fundet)';
 })()
 """
 
@@ -3608,7 +3625,7 @@ private val STICKY_BUTTONS_JS = """
         if (o && o.isConnected && !o.disabled) o.click();
         // Nulstil ruller også siden til toppen, så man står klar ved første felt
         if (reset) { toTop(st.row); setTimeout(function () { toTop(st.row); }, 200); }
-        else if (!o || !o.isConnected) { st.target.style.display = ''; st.pill.remove(); bar = null; kick(); }
+        else if (!o || !o.isConnected) { st.target.style.display = ''; st.target.removeAttribute('data-cnfc-hidden'); st.pill.remove(); bar = null; kick(); }
       }, true);
     });
     st.pill.innerHTML = '';
@@ -3631,6 +3648,7 @@ private val STICKY_BUTTONS_JS = """
       // Cicero har taget søgekortet ud (fx ved sideskift). Ciceros egen række gøres synlig igen, så den
       // kan findes og få en ny pille, når kortet kommer tilbage.
       bar.target.style.display = '';
+      bar.target.removeAttribute('data-cnfc-hidden');
       bar.pill.remove();
       bar = null;
     }
@@ -3641,6 +3659,8 @@ private val STICKY_BUTTONS_JS = """
       var pill = makePill();
       hostFor(target).appendChild(pill);
       target.style.display = 'none';
+      // Mærket, så andre tweaks ved, at knapperne her er gemt af pillen (og stadig er de rigtige)
+      target.setAttribute('data-cnfc-hidden', '1');
       bar = { row: row, target: target, pill: pill, sig: null };
       log('Knaprække fundet (' + names(row) + ')');
     }
