@@ -18,7 +18,8 @@ object CqlText {
     private val KNOWN_COLON = Regex("""(?i)(^|[\s(])($KNOWN):\s*""")
     /** Kode uden "=" (eller med "-"/":" læst for "=") lige før et anførselstegn: (bfi"Hovedbiblioteket" */
     private val CODE_AT_END = Regex("""(^|\(|\s$BOOL_WORD\s)($KNOWN|[a-zæøå]{2,5}\d?)\s*[\-–:]?\s*$""")
-    private val PREFIX = Regex("""(?i)^\s*CQL\s*[:;.]?\s*""")
+    /** "CQL:" foran – også læst som "COL:", "C0L:" eller "CQI:" (så kun med kolon, så et ord som "Col" ikke tages) */
+    private val PREFIX = Regex("""(?i)^\s*(?:CQL\s*[:;.]?|C[QO0][L1I|]\s*[:;])\s*""")
     private val BOOL = Regex("""\s$BOOL_WORD\s""")
     /** Bibliotekets eget filter, som Cicero selv sætter på: "and (bai=715900)" */
     private val BAI = Regex("""(?i)\s*(?:\b(?:and|or)\s+)?\(?\s*\bbai\s*[=\-–:]\s*[\w.]*\s*\)?""")

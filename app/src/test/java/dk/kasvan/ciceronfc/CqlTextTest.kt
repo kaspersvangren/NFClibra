@@ -72,6 +72,17 @@ class CqlTextTest {
     }
 
     @Test
+    fun cql_foran_laest_som_col() {
+        // Fotograferet fra skærmen: "Q" læst som "O"
+        val raw = "COL: (usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi=\"Lager på HB\")) and bai=715900)"
+        assertTrue(CqlText.looksCql(raw))
+        assertEquals("(usa and historie) and ((bhs=OnShelf OR bhs=NotForLoan) AND ((bfi=\"Lager på HB\")))", CqlText.repair(raw))
+        assertEquals("ti=x AND fo=y", CqlText.repair("C0L; ti=x AND fo=y"))
+        // Et ord, der begynder sådan, uden kolon er ikke "CQL:"
+        assertFalse(CqlText.looksCql("Colin Firth"))
+    }
+
+    @Test
     fun qr_kode_med_cql() {
         // Fra browserudvidelsen: præcis, så én kode er nok – men en titel eller et navn er stadig ikke CQL
         assertTrue(CqlText.isCqlCode("faust=12345678"))
