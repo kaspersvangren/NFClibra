@@ -31,37 +31,34 @@ Unable to strip the following libraries, packaging them as they are: libimage_pr
 > Task :app:mergeReleaseArtProfile
 > Task :app:extractReleaseNativeSymbolTables
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:processReleaseResources
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:processReleaseResources
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:collectReleaseDependencies
-> Task :app:optimizeReleaseResources
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
+> Task :app:optimizeReleaseResources
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:mergeExtDexRelease
-
 > Task :app:compileReleaseKotlin
-e: The daemon has terminated unexpectedly on startup attempt #1 with error code: 0. The daemon process output:
-    1. Kotlin compile daemon is ready
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:204:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:205:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:109:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:110:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2155:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:134:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:135:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:136:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:137:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:335:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
 > Task :app:compileReleaseJavaWithJavac NO-SOURCE
-> Task :app:bundleReleaseClassesToRuntimeJar
 > Task :app:bundleReleaseClassesToCompileJar
+> Task :app:bundleReleaseClassesToRuntimeJar
 > Task :app:processReleaseJavaRes
 > Task :app:compileReleaseUnitTestKotlin
 > Task :app:dexBuilderRelease
@@ -75,7 +72,7 @@ w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/cicero
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793194317334.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793196662868.json
 
-BUILD SUCCESSFUL in 1m 8s
+BUILD SUCCESSFUL in 1m
 49 actionable tasks: 49 executed
