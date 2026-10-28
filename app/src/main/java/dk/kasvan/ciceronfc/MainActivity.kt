@@ -1690,7 +1690,11 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     /** Søgningen fra kameraet sættes i CQL-feltet (i stedet for det, der stod), og der trykkes Søg */
     private fun onCqlScanned(cql: String) {
-        if (cql.length > 600 || cql.contains('\n')) return
+        if (cql.length > 2000 || cql.contains('\n')) {
+            LogBuf.add("CQL-søgning fra kameraet for lang (${cql.length} tegn) – ikke sat ind")
+            android.widget.Toast.makeText(this, "Søgningen er for lang til CQL-feltet", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return
         handler.postDelayed({
             if (Hub.locked) return@postDelayed
@@ -3182,12 +3186,20 @@ private val CQL_APPLY_JS = """
   }
   if (!el) return 'intet CQL-felt';
   H.setValue(el, v, true);
-  // Ciceros egen Søg-knap (også når pillen har gemt rækken af vejen)
-  var bs = document.querySelectorAll('button');
-  for (var j = 0; j < bs.length; j++) {
-    var b = bs[j];
-    if (b.closest('[data-cnfc-bar], [data-cnfc], .cdk-overlay-container')) continue;
-    if (/^s[øo]g${'$'}/i.test(H.textOf(b)) && !b.disabled) { setTimeout(function () { b.click(); }, 100); return 'ok'; }
+  // Ciceros egen Søg-knap nærmest CQL-feltet (også når pillen har gemt rækken af vejen): der ledes udad fra
+  // feltet, så det er knappen i samme søgekort – ikke en anden "Søg" et andet sted på siden
+  function soeg(root) {
+    var bs = root.querySelectorAll('button');
+    for (var j = 0; j < bs.length; j++) {
+      var b = bs[j];
+      if (b.closest('[data-cnfc-bar], [data-cnfc], .cdk-overlay-container')) continue;
+      if (/^s[øo]g${'$'}/i.test(H.textOf(b)) && !b.disabled) return b;
+    }
+    return null;
+  }
+  for (var a = el.parentElement; a; a = a.parentElement) {
+    var b = soeg(a);
+    if (b) { setTimeout(function () { b.click(); }, 100); return 'ok'; }
   }
   return 'ok (Søg-knap ikke fundet – tryk selv Søg)';
 })()

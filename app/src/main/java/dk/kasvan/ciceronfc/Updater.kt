@@ -47,6 +47,8 @@ object Updater {
 
     @Volatile private var lastCheck = 0L
     @Volatile private var checking = false
+    /** Svar til dem, der spurgte, mens et tjek allerede kørte ("Søg efter opdatering" midt i et automatisk tjek) */
+    private val waiting = java.util.concurrent.CopyOnWriteArrayList<(Info?, String?) -> Unit>()
 
     fun currentCode(ctx: Context): Long {
         val p = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
@@ -56,7 +58,7 @@ object Updater {
     /** Tjek højst hvert 15. minut – eller med det samme, hvis [force]. [onDone] kaldes på en baggrundstråd. */
     fun check(ctx: Context, force: Boolean = false, onDone: ((Info?, String?) -> Unit)? = null) {
         val now = SystemClock.elapsedRealtime()
-        if (checking) return
+        if (checking) { onDone?.let { waiting += it }; return }
         if (!force && lastCheck != 0L && now - lastCheck < CHECK_EVERY_MS) return
         lastCheck = now
         checking = true
@@ -92,6 +94,7 @@ object Updater {
             }
             listener?.invoke()
             onDone?.invoke(available, error)
+            for (w in waiting) { waiting.remove(w); w(available, error) }
         }
     }
 

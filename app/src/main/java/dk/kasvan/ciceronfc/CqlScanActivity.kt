@@ -78,7 +78,12 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     /** Noget, der er fundet i billedet: en tekstlinje eller et nummer (numType sat) */
     private class Item(val text: String, val rect: RectF, val numType: String?, val cql: Boolean = false) { var pick: Pick? = null }
-    private class Pick(var text: String, var type: String, var item: Item?)
+    private class Pick(var text: String, var type: String, var item: Item?) {
+        /** Linjer, der er flettet ind i denne (deres markering hører til her) */
+        val extra = ArrayList<Item>()
+        /** Teksten, før typen blev skiftet til CQL – så et skift tilbage giver den oprindelige tekst */
+        var beforeCql: String? = null
+    }
 
     private lateinit var tc: ToolColors
     private lateinit var preview: PreviewView
@@ -303,8 +308,24 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     }
 
     /** Fotoet vendt rigtigt og skaleret ned til højst MAX_SIDE på den længste led */
+    /**
+     * Fotoet afkodet i en passende størrelse fra starten: et kamera med 50 MP ville ellers fylde over 200 MB,
+     * før det skaleres ned – så løb telefonen tør for hukommelse, og billedet faldt tilbage til forhåndsvisningen.
+     */
+    private fun decode(image: ImageProxy): Bitmap {
+        if (image.format != android.graphics.ImageFormat.JPEG) return image.toBitmap()
+        val buf = image.planes[0].buffer.duplicate().apply { rewind() }
+        val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2
+        return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+            android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: image.toBitmap()
+    }
+
     private fun upright(image: ImageProxy): Bitmap {
-        val src = image.toBitmap()
+        val src = decode(image)
         val rot = image.imageInfo.rotationDegrees
         val long = maxOf(src.width, src.height)
         val sc = if (long > MAX_SIDE) MAX_SIDE.toFloat() / long else 1f
@@ -344,7 +365,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         busy = false // et foto, der aldrig fik svar (fx kameraet startet forfra imens), må ikke spærre udløseren
         still.visibility = View.GONE
         still.setImageDrawable(null)
-        picks.forEach { it.item = null }
+        picks.forEach { it.item = null; it.extra.clear() }
         marks.items = emptyList()
         controls.liveControls(true)
         retakeIcon.visibility = View.INVISIBLE
@@ -480,8 +501,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     private fun toggle(item: Item) {
         item.pick?.let { p ->
-            picks.remove(p)
-            item.pick = null
+            unpick(p)
             rebuildPicks(); marks.invalidate()
             return
         }
@@ -497,6 +517,14 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         picks += p
         rebuildPicks(); marks.invalidate()
         picksScroll.post { picksScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    /** Fjerner et valg og alle de markeringer, der hører til det (også flettede linjer) */
+    private fun unpick(p: Pick) {
+        picks.remove(p)
+        p.item?.pick = null
+        p.extra.forEach { it.pick = null }
+        p.extra.clear()
     }
 
     // ---------- Søgningen ----------
@@ -586,8 +614,10 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                 val m = android.widget.PopupMenu(this, typeChip)
                 types.entries.forEachIndexed { i, e -> m.menu.add(0, i, i, e.value) }
                 m.setOnMenuItemClickListener { item ->
+                    val old = p.type
                     p.type = types.keys.elementAt(item.itemId)
-                    if (p.type == "cql") p.text = CqlText.repair(p.text)
+                    if (p.type == "cql" && old != "cql") { p.beforeCql = p.text; p.text = CqlText.repair(p.text) }
+                    else if (old == "cql" && p.type != "cql") { p.beforeCql?.let { p.text = it }; p.beforeCql = null }
                     rebuildPicks(); true
                 }
                 m.show()
@@ -610,8 +640,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                     typeChip,
                     pill("Søg nu", false) { finishWith(cqlOf(p.text, p.type)) },
                     pill("✕", false) {
-                        picks.remove(p)
-                        p.item?.pick = null
+                        unpick(p)
                         rebuildPicks(); marks.invalidate()
                     },
                 ).forEach { chipRow.addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }) }
@@ -633,14 +662,16 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             .setView(FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(input) })
             .setPositiveButton("OK") { _, _ ->
                 val t = input.text.toString().trim()
-                if (t.isNotEmpty()) { p.text = t; rebuildPicks() }
+                if (t.isNotEmpty()) { p.text = t; p.beforeCql = null; rebuildPicks() }
             }
             .setNegativeButton("Annuller", null)
             .apply {
                 if (above != null) setNeutralButton("Flet med linjen over") { _, _ ->
                     above.text = above.text + " " + input.text.toString().trim()
                     picks.remove(p)
-                    p.item?.pick = above
+                    // Den flettede linjes markering hører nu til linjen over – og forsvinder med den
+                    p.item?.let { it.pick = above; above.extra += it }
+                    p.extra.forEach { it.pick = above; above.extra += it }
                     rebuildPicks(); marks.invalidate()
                 }
             }
