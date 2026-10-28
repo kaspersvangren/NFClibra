@@ -393,11 +393,14 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             if (v == null) { LogBuf.add("CQL-kamera: kode uden læsbar tekst"); continue }
             val box = b.boundingBox?.let { RectF(it.left * k, it.top * k, it.right * k, it.bottom * k) } ?: continue
             if (!v.all { it.isDigit() }) {
-                // QR-kode med en CQL-søgning (fx fra browserudvidelsen på pc'en): præcis, så den søges, som den står
+                // QR-kode med en søgning (fx fra browserudvidelsen på pc'en): præcis, så den søges, som den står – også
+                // ren fritekst som "usa and historie". En stregkode med tekst skal ligne CQL. Webadresser bruges ikke
                 val one = v.replace(Regex("\\s+"), " ")
-                if (CqlText.isCqlCode(one)) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, box, null, cql = true) }
-                // Kun længde og om der er et "=" – aldrig indholdet
-                else LogBuf.add("CQL-kamera: kode med ${v.length} tegn er ikke CQL (\"=\" ${if (v.contains('=')) "findes" else "mangler"})")
+                val url = Regex("""(?i)^(?:[a-z][a-z0-9+.\-]*://|www\.)""").containsMatchIn(one)
+                val ok = !url && one.length <= 2000 && (b.format == Barcode.FORMAT_QR_CODE || CqlText.isCqlCode(one))
+                if (ok) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, box, null, cql = true) }
+                // Kun længde og grund – aldrig indholdet
+                else LogBuf.add("CQL-kamera: kode med ${v.length} tegn bruges ikke (${if (url) "webadresse" else "ikke CQL"})")
                 continue
             }
             val type = numType(v, false) ?: continue
