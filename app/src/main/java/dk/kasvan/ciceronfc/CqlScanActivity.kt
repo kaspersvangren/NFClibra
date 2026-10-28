@@ -649,7 +649,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                         c.textSize = 13f
                         c.maxLines = 1
                         c.ellipsize = android.text.TextUtils.TruncateAt.END
-                        c.setPadding(dp(6), dp(6), dp(6), dp(6))
+                        c.setPadding(dp(6), 0, dp(6), 0)
                     }
                     val searchIcon = FrameLayout(this@CqlScanActivity).apply {
                         background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(2), tc.blue); cornerRadius = dp(18).toFloat() }
@@ -660,7 +660,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
                             imageTintList = android.content.res.ColorStateList.valueOf(tc.blue)
                         }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
                     }
-                    chipRow.addView(typeChip, LinearLayout.LayoutParams(0, wrap, 1f))
+                    chipRow.addView(typeChip, LinearLayout.LayoutParams(0, dp(34), 1f))
                     chipRow.addView(searchIcon, LinearLayout.LayoutParams(dp(44), dp(34)).apply { marginStart = dp(6) })
                     chipRow.addView(remove, LinearLayout.LayoutParams(dp(40), dp(34)).apply { marginStart = dp(6) })
                 } else {
