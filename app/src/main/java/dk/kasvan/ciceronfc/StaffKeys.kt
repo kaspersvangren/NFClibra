@@ -16,6 +16,7 @@ import android.widget.TextView
 /**
  * Lille tastatur til personalet i felterne Låner, telefonnumre og Materialenummer: tal, slet, Enter,
  * ABC (telefonens tastatur), skjul og én tast, der skifter efter feltet: C, + eller kamera.
+ * Ved Låner har nederste række desuden et kamera (fx til en QR-kode med lånernummeret fra pc'en).
  * Det ligger i bunden som telefonens eget tastatur. Tasterne sendes til Cicero som rigtige tastetryk,
  * så Cicero opfører sig, som hvis der blev tastet på et tastatur. Intet gemmes.
  */
@@ -31,6 +32,8 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         object Hide : Key()
         /** C (Låner), + (telefon) eller kamera (Materialenummer) */
         object Special : Key()
+        /** Kamera i nederste række – kun ved Låner */
+        object Camera : Key()
     }
 
     enum class Mode { LAANER, PHONE, ITEM }
@@ -45,6 +48,8 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
     private val icons = ArrayList<ImageView>()
     private val smallBgs = ArrayList<GradientDrawable>()
     private lateinit var enterBg: GradientDrawable
+    private var cameraKey: View? = null
+    private var enterKey: View? = null
 
     val view = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
@@ -59,7 +64,7 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         row(Key.Char('1'), Key.Char('2'), Key.Char('3'), Key.Delete)
         row(Key.Char('4'), Key.Char('5'), Key.Char('6'), Key.Special)
         row(Key.Char('7'), Key.Char('8'), Key.Char('9'), Key.Abc)
-        row(Key.Hide, Key.Char('0'), Key.Enter)
+        row(Key.Hide, Key.Camera, Key.Char('0'), Key.Enter)
     }
 
     private fun row(vararg ks: Key) {
@@ -70,6 +75,7 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
             val content: View = when (k) {
                 is Key.Delete -> icon(R.drawable.ic_backspace, "Slet")
                 is Key.Hide -> icon(R.drawable.ic_keyboard_hide, "Skjul tastaturet")
+                is Key.Camera -> icon(R.drawable.ic_camera, "Kamera")
                 is Key.Special -> FrameLayout(ctx).apply {
                     specialText = TextView(ctx).apply {
                         gravity = Gravity.CENTER
@@ -111,6 +117,8 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
                     true
                 }
             }
+            if (k is Key.Camera) cameraKey = key
+            if (k is Key.Enter) enterKey = key
             when {
                 k is Key.Enter -> enterBg = bg
                 small -> smallBgs += bg
@@ -145,6 +153,13 @@ class StaffKeys(private val ctx: Context, private val dp: (Int) -> Int) {
         specialText.text = if (m == Mode.PHONE) "+" else "C"
         specialText.visibility = if (m == Mode.ITEM) View.GONE else View.VISIBLE
         specialIcon.visibility = if (m == Mode.ITEM) View.VISIBLE else View.GONE
+        // Ved Låner: skjul · kamera · 0 · Enter (fire lige brede taster under rækkerne ovenover). Ellers: skjul · 0 · bred Enter
+        val laaner = m == Mode.LAANER
+        cameraKey?.visibility = if (laaner) View.VISIBLE else View.GONE
+        (enterKey?.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+            lp.weight = if (laaner) 1f else 2f
+            enterKey?.layoutParams = lp
+        }
         view.visibility = View.VISIBLE
     }
     fun hide() { view.visibility = View.GONE }

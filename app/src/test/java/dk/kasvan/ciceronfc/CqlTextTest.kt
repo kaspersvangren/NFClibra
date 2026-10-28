@@ -72,6 +72,17 @@ class CqlTextTest {
     }
 
     @Test
+    fun qr_kode_med_cql() {
+        // Fra browserudvidelsen: præcis, så én kode er nok – men en titel eller et navn er stadig ikke CQL
+        assertTrue(CqlText.isCqlCode("faust=12345678"))
+        assertTrue(CqlText.isCqlCode("ti=\"Harry Potter\""))
+        assertTrue(CqlText.isCqlCode("CQL: (ti=\"x\" AND fo=\"y\") and (bai=715900)"))
+        assertFalse(CqlText.isCqlCode("Harry Potter og De Vises Sten"))
+        assertFalse(CqlText.isCqlCode("Willerslev, Rane"))
+        assertEquals("ti=\"x\" AND fo=\"y\"", CqlText.repair("CQL: (ti=\"x\" AND fo=\"y\") and (bai=715900)"))
+    }
+
+    @Test
     fun linjer_brudt_over_flere_linjer() {
         // Åbent anførselstegn eller åben parentes, eller linjen har selv en kode – ellers hører den ikke med
         assertTrue(CqlText.continues("CQL: (ti=\"*på flugt", "i sibirien*\" AND fo=x)"))

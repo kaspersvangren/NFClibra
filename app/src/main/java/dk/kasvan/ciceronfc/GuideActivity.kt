@@ -812,8 +812,8 @@ class GuideActivity : LockedScreen() {
         Page(
             "Tal-tastatur i felterne",
             "Låner, telefon og Materialenummer får et tastatur med tal. Ekstratasten er C ved Låner, + ved telefon og et kamera " +
-                "ved Materialenummer. Kameraet læser stregkoden eller tallene og skriver nummeret ind for dig. ABC skifter til " +
-                "telefonens almindelige tastatur.",
+                "ved Materialenummer. Låner har også et kamera nederst. Kameraet læser stregkode, QR-kode eller tal og skriver " +
+                "nummeret ind. ABC giver telefonens almindelige tastatur.",
         ) {
             val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
             val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

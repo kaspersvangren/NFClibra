@@ -40,6 +40,8 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     companion object {
         const val EXTRA_VALUE = "value"
         const val EXTRA_DARK = "dark"
+        /** Åbnet fra Låner-feltet: teksten taler om lånernummer (QR-kode fra pc'en, stregkode på lånerkortet) */
+        const val EXTRA_PATRON = "patron"
         private val DIGITS = Regex("""(?<![0-9])[0-9](?:[ \-]?[0-9]){7,15}(?![0-9])""")
     }
 
@@ -102,7 +104,9 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         }
         frame.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ -> frameRect = Rect(l, t, r, b) }
         hint = TextView(this).apply {
-            text = "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
+            text = if (intent.getBooleanExtra(EXTRA_PATRON, false))
+                "Hold lånernummeret inden for rammen – QR-kode, stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
+            else "Hold materialenummeret inden for rammen – stregkode eller tal. Tryk på billedet for skarpt billede, og vælg så nummeret nedenfor."
             textSize = 15f
             setTextColor(sub)
             setPadding(dp(16), dp(10), dp(16), dp(6))

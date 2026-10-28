@@ -41,6 +41,15 @@ object CqlText {
     }
 
     /**
+     * Indholdet af en QR-kode: læst præcist, så én kode er nok (fx `faust=12345678` eller `ti="Harry Potter"`).
+     * Almindelig tekst uden kode= (en titel, et navn) er stadig ikke CQL.
+     */
+    fun isCqlCode(s: String): Boolean {
+        if (looksCql(s)) return true
+        return segments(s.trim()).any { (text, quoted) -> !quoted && (ANY_EQ.containsMatchIn(text) || KNOWN_DASH.containsMatchIn(text)) }
+    }
+
+    /**
      * Hører [line] med til en CQL-søgning, der er brudt over flere linjer, og som indtil nu lyder [soFar]?
      * Ja, hvis der står et anførselstegn eller en parentes åben, eller linjen selv har en kode= eller begynder med AND/OR.
      */

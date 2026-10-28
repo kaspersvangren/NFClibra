@@ -1667,7 +1667,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         staffKeys.show(mode)
     }
 
-    /** Kameraet fra værktøjet til feltet Materialenummer: nummeret tastes ind, og Enter trykkes */
+    /** Kameraet til feltet Materialenummer eller Låner: nummeret tastes ind, og Enter trykkes */
     private fun onFieldScanned(v: String) {
         // Kun tal og bogstaver – intet andet sendes ind på siden
         if (!Regex("^[0-9A-Za-z]{1,40}$").matches(v)) return
@@ -1677,7 +1677,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 if (Hub.locked || Uri.parse(web.url ?: "").host?.lowercase() != CICERO_HOST) return@postDelayed
                 v.forEach { sendChar(it) }
                 sendKey(KeyEvent.KEYCODE_ENTER)
-                LogBuf.add("Materialenummer læst med kamera")
+                LogBuf.add(if (scanForPatron) "Lånernummer læst med kamera" else "Materialenummer læst med kamera")
             }, 200)
         }
     }
@@ -1705,11 +1705,17 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     }
 
     /** Værktøjets kamera til materialenummeret; resultatet tastes ind i feltet (onFieldScanned) */
-    private fun openItemScanner() {
+    /** Hvilket felt kameraet læser til (kun til loggen og teksten i kameraet – selve nummeret logges aldrig) */
+    private var scanForPatron = false
+
+    private fun openItemScanner(forPatron: Boolean = false) {
+        scanForPatron = forPatron
         openingOwn()
         @Suppress("DEPRECATION")
         startActivityForResult(
-            Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette),
+            Intent(this, ScanActivity::class.java)
+                .putExtra(ScanActivity.EXTRA_DARK, pal === darkPalette)
+                .putExtra(ScanActivity.EXTRA_PATRON, forPatron),
             scanRequestCode,
         )
     }
@@ -1741,6 +1747,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
                 StaffKeys.Mode.PHONE -> sendKey(KeyEvent.KEYCODE_PLUS)
                 StaffKeys.Mode.ITEM -> openItemScanner()
             }
+            StaffKeys.Key.Camera -> openItemScanner(forPatron = true)
             StaffKeys.Key.Delete -> sendKey(KeyEvent.KEYCODE_DEL)
             StaffKeys.Key.Enter -> sendKey(KeyEvent.KEYCODE_ENTER)
             StaffKeys.Key.Hide -> hideStaffKeys()

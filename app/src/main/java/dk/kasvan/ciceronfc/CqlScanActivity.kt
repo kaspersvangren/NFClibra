@@ -377,7 +377,12 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         for (b in list) {
             val v = b.rawValue?.trim() ?: continue
             val box = b.boundingBox ?: continue
-            if (!v.all { it.isDigit() }) continue
+            if (!v.all { it.isDigit() }) {
+                // QR-kode med en CQL-søgning (fx fra browserudvidelsen på pc'en): præcis, så den søges, som den står
+                val one = v.replace(Regex("\\s+"), " ")
+                if (CqlText.isCqlCode(one)) CqlText.repair(one).takeIf { it.isNotEmpty() }?.let { out += Item(it, RectF(box), null, cql = true) }
+                continue
+            }
             val type = numType(v, false) ?: continue
             out += Item(v, RectF(box), type)
         }
