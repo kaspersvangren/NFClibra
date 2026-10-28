@@ -130,6 +130,7 @@ class ScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
         } else {
+            openingOwnWindow = true
             askCamera.launch(Manifest.permission.CAMERA)
         }
     }

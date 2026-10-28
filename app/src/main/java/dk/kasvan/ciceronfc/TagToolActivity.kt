@@ -282,6 +282,7 @@ class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             input.setSelection(input.text.length)
         }
         val camBtn = button("Kamera", blue) {
+            openingOwnWindow = true
             scan.launch(Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_DARK, dark))
         }
         prog.addView(LinearLayout(this).apply {
@@ -893,14 +894,6 @@ class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     // Samme vibration som resten af app'en (kommer også igennem i lydløs)
     private fun vibrate(pattern: LongArray) = Hub.vibrate(pattern)
 
-    private val idleCheck = object : Runnable {
-        override fun run() {
-            // 2 minutter uden brug: luk værktøjet, så app'en låser som normalt
-            if (Hub.locked || Hub.idleTooLong()) { finish(); return }
-            handler.postDelayed(this, 10_000)
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         if (isFinishing) return
@@ -910,14 +903,11 @@ class TagToolActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             NfcAdapter.FLAG_READER_NFC_V or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
             opts,
         )
-        handler.removeCallbacks(idleCheck)
-        handler.postDelayed(idleCheck, 10_000)
     }
 
     override fun onPause() {
         super.onPause()
         nfc?.disableReaderMode(this)
-        handler.removeCallbacks(idleCheck)
     }
 
     override fun onDestroy() {

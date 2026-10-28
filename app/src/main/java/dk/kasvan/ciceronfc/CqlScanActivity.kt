@@ -99,6 +99,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var camBox: FrameLayout
     private lateinit var side: LinearLayout
     private val worker = Executors.newSingleThreadExecutor()
+    // Lukkes skærmen, mens et foto er undervejs, kommer svaret efter, at tråden er lukket – det må ikke få app'en til at gå ned
+    private val safe = java.util.concurrent.Executor { r -> try { worker.execute(r) } catch (_: Exception) {} }
     private var frozen = false
     private var land = false
     private var busy = false
@@ -196,7 +198,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         window.navigationBarColor = tc.bg
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCamera()
-        else askCamera.launch(Manifest.permission.CAMERA)
+        else { openingOwnWindow = true; askCamera.launch(Manifest.permission.CAMERA) }
     }
 
     /**
@@ -278,7 +280,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         hint.text = "Læser billedet …"
         val c = controller ?: run { read(quick); return }
         try {
-            c.takePicture(worker, object : ImageCapture.OnImageCapturedCallback() {
+            c.takePicture(safe, object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     val bmp = try { upright(image) } catch (e: Throwable) {
                         LogBuf.add("CQL-kamera: foto kunne ikke læses (${e.javaClass.simpleName}) – bruger forhåndsvisningen"); null
@@ -339,6 +341,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     private fun retake() {
         frozen = false
+        busy = false // et foto, der aldrig fik svar (fx kameraet startet forfra imens), må ikke spærre udløseren
         still.visibility = View.GONE
         still.setImageDrawable(null)
         picks.forEach { it.item = null }
@@ -372,8 +375,9 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             if (CqlText.looksCql(first.text)) {
                 // Linjerne under hører med, så længe de ligner fortsættelsen af søgningen
                 var n = 1
-                while (n < lines.size && CqlText.continues(lines[n].text)) n++
-                val q = CqlText.repair(lines.take(n).joinToString(" ") { it.text })
+                var soFar = first.text
+                while (n < lines.size && CqlText.continues(soFar, lines[n].text)) { soFar += " " + lines[n].text; n++ }
+                val q = CqlText.repair(soFar)
                 val box = first.boundingBox?.let { RectF(it) }
                 if (q.isNotEmpty() && box != null) {
                     lines.take(n).forEach { l -> l.boundingBox?.let { box.union(RectF(it)) } }
