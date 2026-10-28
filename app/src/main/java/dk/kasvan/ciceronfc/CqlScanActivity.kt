@@ -28,12 +28,15 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.camera.mlkit.vision.MlKitAnalyzer
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import androidx.core.content.ContextCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -106,6 +109,12 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
     private lateinit var camBox: FrameLayout
     private lateinit var side: LinearLayout
     private val worker = Executors.newSingleThreadExecutor()
+    /** QR-koder i den løbende video (som telefonens eget kamera) – på sin egen tråd, så fotoet ikke venter */
+    private val liveExec = Executors.newSingleThreadExecutor()
+    private val liveSafe = java.util.concurrent.Executor { r -> try { liveExec.execute(r) } catch (_: Exception) {} }
+    private val qrOnly by lazy {
+        BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build())
+    }
     // Lukkes skærmen, mens et foto er undervejs, kommer svaret efter, at tråden er lukket – det må ikke få app'en til at gå ned
     private val safe = java.util.concurrent.Executor { r -> try { worker.execute(r) } catch (_: Exception) {} }
     private var frozen = false
@@ -154,7 +163,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             addView(marks, FrameLayout.LayoutParams(match, match))
         }
         hint = TextView(this).apply {
-            text = "Sigt på bogen eller skærmen, og tag et billede."
+            text = "Sigt på bogen eller skærmen, og tag et billede. En QR-kode søges med det samme."
             textSize = 15f
             setTextColor(tc.sub)
         }
@@ -255,7 +264,14 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
             val c = LifecycleCameraController(this)
             c.cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             // Kun forhåndsvisning – billedet tages fra den, så markeringerne passer præcist med det, man så
-            c.setEnabledUseCases(CameraController.IMAGE_CAPTURE)
+            c.setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
+            c.imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+            c.setImageAnalysisAnalyzer(
+                liveSafe,
+                MlKitAnalyzer(listOf(qrOnly), ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL, ContextCompat.getMainExecutor(this)) { r ->
+                    r.getValue(qrOnly)?.let { onLiveQr(it) }
+                },
+            )
             c.isTapToFocusEnabled = true
             preview.controller = c
             c.bindToLifecycle(this)
@@ -264,6 +280,35 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         } catch (e: Exception) {
             LogBuf.add("Kamera kunne ikke starte: ${e.message}")
             hint.text = "Kameraet kunne ikke starte"
+        }
+    }
+
+    /**
+     * QR-kode set i videoen, mens man sigter: en søgning (fx fra browserudvidelsen på pc'en) bruges med det samme –
+     * er der intet valgt, søges der; er der valgt noget, lægges den til valgene. Kun QR-koder; stregkoder og tekst
+     * vælges fra billedet som før.
+     */
+    private fun onLiveQr(list: List<Barcode>) {
+        if (frozen || busy || isFinishing) return
+        for (b in list) {
+            val v = b.rawValue?.trim()?.replace(Regex("\\s+"), " ") ?: continue
+            if (v.isEmpty() || v.length > 2000 || v.all { it.isDigit() }) continue
+            if (Regex("""(?i)^(?:[a-z][a-z0-9+.\-]*://|www\.)""").containsMatchIn(v)) continue
+            val q = CqlText.repair(v)
+            if (q.isEmpty()) continue
+            if (picks.isEmpty()) {
+                Hub.vibrate(longArrayOf(0, 40))
+                LogBuf.add("CQL-kamera: QR-kode søgt med det samme")
+                finishWith(q)
+            } else if (picks.none { it.type == "cql" && it.text == q }) {
+                // Samme kode lægges kun til én gang, selv om den ses i mange billeder i træk
+                Hub.vibrate(longArrayOf(0, 40))
+                picks += Pick(q, "cql", null)
+                rebuildPicks()
+                picksScroll.post { picksScroll.fullScroll(View.FOCUS_DOWN) }
+                Toast.makeText(this, "QR-koden er lagt til valgene", Toast.LENGTH_SHORT).show()
+            }
+            return
         }
     }
 
@@ -383,7 +428,7 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
         controls.liveControls(true)
         retakeIcon.visibility = View.INVISIBLE
         shutter.contentDescription = "Tag billede"
-        hint.text = "Sigt på bogen eller skærmen, og tag et billede."
+        hint.text = "Sigt på bogen eller skærmen, og tag et billede. En QR-kode søges med det samme."
     }
 
     /** [k]: fra koordinaterne i det billede, koden blev fundet i, til det fulde billede */
@@ -811,7 +856,8 @@ class CqlScanActivity : LockedScreen(), NfcAdapter.ReaderCallback {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { barcodes.close(); texts.close() } catch (_: Exception) {}
+        try { barcodes.close(); texts.close(); qrOnly.close() } catch (_: Exception) {}
         worker.shutdown()
+        liveExec.shutdown()
     }
 }
