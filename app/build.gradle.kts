@@ -27,6 +27,35 @@ android {
         }
     }
 
+    // To udgaver af samme kode: den rigtige og en til Ciceros sandkasse (test). De har hver sit interne navn,
+    // så begge kan være installeret på én gang, og hver sin port, så de ikke går i vejen for hinanden.
+    buildFeatures {
+        buildConfig = true
+    }
+    flavorDimensions += "miljoe"
+    productFlavors {
+        create("standard") {
+            dimension = "miljoe"
+            buildConfigField("boolean", "SANDBOX", "false")
+            buildConfigField("String", "CICERO_HOST", "\"cicero.systematic.com\"")
+            buildConfigField("String", "DOMAINS", "\"systematic.com\"")
+            buildConfigField("int", "RFID_PORT", "1667")
+            buildConfigField("String", "APK_NAME", "\"NFClibra.apk\"")
+            manifestPlaceholders["appLabel"] = "NFClibra"
+        }
+        create("sandkasse") {
+            dimension = "miljoe"
+            applicationIdSuffix = ".sandkasse"
+            buildConfigField("boolean", "SANDBOX", "true")
+            buildConfigField("String", "CICERO_HOST", "\"cloud-education.nonprod.cicero-lms.com\"")
+            // Hjælp og andre links kan stadig pege på systematic.com
+            buildConfigField("String", "DOMAINS", "\"cicero-lms.com,systematic.com\"")
+            buildConfigField("int", "RFID_PORT", "1668")
+            buildConfigField("String", "APK_NAME", "\"NFClibra-sandkasse.apk\"")
+            manifestPlaceholders["appLabel"] = "NFClibra Sandkasse"
+        }
+    }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false

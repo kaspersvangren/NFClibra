@@ -28,9 +28,9 @@ import kotlin.concurrent.thread
  * En app på samme telefon kan forfalske Origin-headeren, men ikke skaffe en billet (se nedenfor).
  */
 object Server {
-    const val PORT = 1667
+    val PORT = Env.RFID_PORT
 
-    private const val ALLOWED_ORIGIN = "https://cicero.systematic.com"
+    private val ALLOWED_ORIGIN = "https://${Env.CICERO_HOST}"
     private const val MAX_SSE_CLIENTS = 4
     private const val MAX_HEADER_LINES = 64
     private const val MAX_HEADER_BYTES = 16_384

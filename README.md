@@ -144,3 +144,11 @@ Se [CHANGELOG.md](CHANGELOG.md).
 ## Licens
 
 Endnu ikke valgt.
+
+## Sandkasse-udgaven
+
+Samme kode bygges også som **NFClibra Sandkasse** (`dk.kasvan.ciceronfc.sandkasse`) til Ciceros testmiljø
+`https://cloud-education.nonprod.cicero-lms.com/`. Den kan installeres ved siden af den rigtige app, har orange ikon og
+en orange stribe øverst og bruger port **1668** til RFID (i sandkassens Enhedsindstillinger → RFID scanner). Hent den på
+`https://github.com/kaspersvangren/NFClibra/releases/latest/download/NFClibra-sandkasse.apk`; derefter opdaterer den sig selv.
+Forskellene står i `app/build.gradle.kts` (productFlavors) og samles i `Env.kt`.

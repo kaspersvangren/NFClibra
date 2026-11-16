@@ -57,13 +57,13 @@ import android.widget.TextView
 class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     companion object {
-        const val START_URL = "https://cicero.systematic.com/"
+        val START_URL = Env.START_URL
 
         /** App'en låser sig efter 2 minutter uden brug – og med det samme, når skærmen slukkes eller app'en forlades. */
         const val LOCK_AFTER_MS = 2 * 60 * 1000L
         /** Ciceros login-side (Keycloak). Står app'en her, er man ikke logget ind. */
-        const val LOGIN_HOST = "auth.cicero.systematic.com"
-        const val CICERO_HOST = "cicero.systematic.com"
+        val LOGIN_HOST = Env.LOGIN_HOST
+        val CICERO_HOST = Env.CICERO_HOST
         const val PREF_PIN_PAD = "pinPad"
         const val PREF_PIN_FLIP = "pinPadFlip"
         const val PREF_TWEAKS = "ciceroTweaks" // tidligere fælles kontakt; nu kun udgangspunkt for de enkelte
@@ -272,7 +272,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private fun logStartup() {
         val date = java.text.SimpleDateFormat("d. MMM yyyy", java.util.Locale("da")).format(java.util.Date())
         LogBuf.add(
-            "NFClibra ${BuildConfigInfo.version(this)} startet $date · Android ${Build.VERSION.RELEASE} " +
+            "NFClibra ${if (Env.SANDBOX) "Sandkasse " else ""}${BuildConfigInfo.version(this)} startet $date · Android ${Build.VERSION.RELEASE} " +
                 "(SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}",
         )
         val wv = try {
@@ -447,6 +447,18 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             // Pinkode-tastaturet ligger over Cicero, men under låsen
             addView(pinPad.view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(lockView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        if (Env.SANDBOX) {
+            // Sandkassen må aldrig forveksles med den rigtige Cicero
+            root.addView(TextView(this).apply {
+                text = "SANDKASSE · ${Env.CICERO_HOST.substringBefore('.')}"
+                setTextColor(Color.BLACK)
+                setBackgroundColor(Color.parseColor("#FF9800"))
+                textSize = 12f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(0, dp(2), 0, dp(2))
+            }, 0, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         setContentView(container)
         applyPalette()
@@ -1434,10 +1446,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     /** Sti + parametre af en adresse, som browseren sender dem (til serverens billetter) */
     private fun targetOf(u: Uri): String = (u.encodedPath ?: "/") + (u.encodedQuery?.let { "?$it" } ?: "")
 
-    private fun isSystematicHost(h: String) = h == "systematic.com" || h.endsWith(".systematic.com")
+    private fun isSystematicHost(h: String) = Env.DOMAINS.any { h == it || h.endsWith(".$it") }
 
     // Cicero og de login-tjenester, Cicero kan sende videre til (Systematic, KOMBIT/FKA, MitID)
-    private fun isTrustedHost(h: String) = listOf("systematic.com", "kombit.dk", "nemlog-in.dk", "mitid.dk")
+    private fun isTrustedHost(h: String) = (Env.DOMAINS + listOf("kombit.dk", "nemlog-in.dk", "mitid.dk"))
         .any { h == it || h.endsWith(".$it") }
 
     private fun toggleFlip() {
@@ -2405,7 +2417,7 @@ private val HELPERS_JS = """
 (function () {
   if (window.__cnfc) return;
   var H = window.__cnfc = {};
-  H.cicero = function () { return location.hostname === 'cicero.systematic.com'; };
+  H.cicero = function () { return location.hostname === '${Env.CICERO_HOST}'; };
   /** Synlig tekst, med al mellemrum/linjeskift samlet til ét mellemrum */
   H.textOf = function (el) { return ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim(); };
   H.visible = function (el) { return !!(el && el.offsetParent !== null); };

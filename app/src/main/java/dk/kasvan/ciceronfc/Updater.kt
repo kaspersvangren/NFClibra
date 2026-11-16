@@ -121,7 +121,9 @@ object Updater {
         if (apk !in APK_NAMES || !Regex("""^v\d+\.\d+\.\d+$""").matches(tag)) throw IOException("ugyldig versionsfil")
         val code = if (j.has("code")) j.getLong("code") else null
         val name = j.optString("name", "").takeIf { Regex("""^\d+\.\d+\.\d+$""").matches(it) }
-        return Release(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$apk", j.optString("notes", ""), code, name)
+        // Sandkassen opdaterer fra sin egen fil i samme udgivelse
+        val file = if (Env.SANDBOX) Env.APK_NAME else apk
+        return Release(tag, "${DOWNLOAD_PREFIXES[0]}$tag/$file", j.optString("notes", ""), code, name)
     }
 
     /** Det samme fra GitHubs API (reserve) */
@@ -132,7 +134,8 @@ object Updater {
         for (i in 0 until assets.length()) {
             val a = assets.getJSONObject(i)
             val name = a.getString("name")
-            if (name in APK_NAMES && (url.isEmpty() || name == "NFClibra.apk")) url = a.getString("browser_download_url")
+            if (Env.SANDBOX) { if (name == Env.APK_NAME) url = a.getString("browser_download_url") }
+            else if (name in APK_NAMES && (url.isEmpty() || name == "NFClibra.apk")) url = a.getString("browser_download_url")
         }
         val name = Regex("""(\d+\.\d+\.\d+)$""").find(j.optString("name", ""))?.groupValues?.get(1)
         return Release(j.getString("tag_name"), url, j.optString("body", ""), null, name)
