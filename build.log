@@ -1,79 +1,154 @@
+
+Welcome to Gradle 8.10.2!
+
+Here are the highlights of this release:
+ - Support for Java 23
+ - Faster configuration cache
+ - Better configuration cache reports
+
+For more details see https://docs.gradle.org/8.10.2/release-notes.html
+
 To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
 Daemon will be stopped at the end of the build 
 > Task :app:buildKotlinToolingMetadata
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :app:preBuild UP-TO-DATE
-> Task :app:preReleaseBuild UP-TO-DATE
-> Task :app:generateReleaseResValues
-> Task :app:checkReleaseAarMetadata
-> Task :app:mapReleaseSourceSetPaths
-> Task :app:generateReleaseResources
-> Task :app:packageReleaseResources
-> Task :app:mergeReleaseResources
-> Task :app:createReleaseCompatibleScreenManifests
-> Task :app:extractDeepLinksRelease
-> Task :app:parseReleaseLocalResources
-> Task :app:processReleaseMainManifest
-> Task :app:processReleaseManifest
-> Task :app:preReleaseUnitTestBuild UP-TO-DATE
-> Task :app:javaPreCompileRelease
-> Task :app:javaPreCompileReleaseUnitTest
-> Task :app:processReleaseManifestForPackage
-> Task :app:mergeReleaseJniLibFolders
-> Task :app:mergeReleaseNativeLibs
-> Task :app:desugarReleaseFileDependencies
-> Task :app:checkReleaseDuplicateClasses
-> Task :app:mergeReleaseStartupProfile
+> Task :app:preStandardReleaseBuild UP-TO-DATE
+> Task :app:generateStandardReleaseBuildConfig
+> Task :app:generateStandardReleaseResValues
+> Task :app:checkStandardReleaseAarMetadata
+> Task :app:mapStandardReleaseSourceSetPaths
+> Task :app:generateStandardReleaseResources
+> Task :app:packageStandardReleaseResources
+> Task :app:mergeStandardReleaseResources
+> Task :app:createStandardReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksStandardRelease
+> Task :app:parseStandardReleaseLocalResources
+> Task :app:processStandardReleaseMainManifest
+> Task :app:processStandardReleaseManifest
+> Task :app:preStandardReleaseUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileStandardRelease
+> Task :app:preSandkasseReleaseBuild UP-TO-DATE
+> Task :app:javaPreCompileStandardReleaseUnitTest
+> Task :app:mergeSandkasseReleaseJniLibFolders
+> Task :app:mergeSandkasseReleaseNativeLibs
+> Task :app:processStandardReleaseManifestForPackage
+> Task :app:checkSandkasseReleaseDuplicateClasses
 
-> Task :app:stripReleaseDebugSymbols
+> Task :app:stripSandkasseReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libsurface_util_jni.so.
 
-> Task :app:extractReleaseNativeSymbolTables
-> Task :app:processReleaseResources
-> Task :app:mergeReleaseArtProfile
-> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeReleaseShaders
-> Task :app:compileReleaseShaders NO-SOURCE
-> Task :app:generateReleaseAssets UP-TO-DATE
-> Task :app:mergeReleaseAssets
-> Task :app:compressReleaseAssets
-> Task :app:extractReleaseVersionControlInfo
-> Task :app:collectReleaseDependencies
-> Task :app:sdkReleaseDependencyData
-> Task :app:validateSigningRelease
-> Task :app:optimizeReleaseResources
-> Task :app:writeReleaseAppMetadata
-> Task :app:writeReleaseSigningConfigVersions
-> Task :app:mergeExtDexRelease
+> Task :app:generateSandkasseReleaseBuildConfig
+> Task :app:extractSandkasseReleaseNativeSymbolTables
+> Task :app:checkSandkasseReleaseAarMetadata
+> Task :app:generateSandkasseReleaseResValues
+> Task :app:mergeSandkasseReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mapSandkasseReleaseSourceSetPaths
+> Task :app:generateSandkasseReleaseResources
+> Task :app:processStandardReleaseResources
+> Task :app:mergeSandkasseReleaseResources
+> Task :app:packageSandkasseReleaseResources
+> Task :app:createSandkasseReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksSandkasseRelease
+> Task :app:parseSandkasseReleaseLocalResources
+> Task :app:processSandkasseReleaseMainManifest
+> Task :app:processSandkasseReleaseManifest
+> Task :app:javaPreCompileSandkasseRelease
+> Task :app:processSandkasseReleaseManifestForPackage
+> Task :app:desugarSandkasseReleaseFileDependencies
+> Task :app:mergeSandkasseReleaseStartupProfile
+> Task :app:compileStandardReleaseKotlin
+> Task :app:processSandkasseReleaseResources
+> Task :app:mergeExtDexSandkasseRelease
+> Task :app:mergeSandkasseReleaseArtProfile
+> Task :app:mergeSandkasseReleaseShaders
+> Task :app:compileSandkasseReleaseShaders NO-SOURCE
+> Task :app:generateSandkasseReleaseAssets UP-TO-DATE
+> Task :app:mergeSandkasseReleaseAssets
+> Task :app:compressSandkasseReleaseAssets
+> Task :app:extractSandkasseReleaseVersionControlInfo
+> Task :app:collectSandkasseReleaseDependencies
+> Task :app:sdkSandkasseReleaseDependencyData
+> Task :app:validateSigningSandkasseRelease
+> Task :app:writeSandkasseReleaseAppMetadata
+> Task :app:writeSandkasseReleaseSigningConfigVersions
+> Task :app:optimizeSandkasseReleaseResources
+> Task :app:mergeStandardReleaseJniLibFolders
+> Task :app:mergeStandardReleaseNativeLibs
+> Task :app:checkStandardReleaseDuplicateClasses
+> Task :app:desugarStandardReleaseFileDependencies
+> Task :app:mergeStandardReleaseStartupProfile
 
-> Task :app:compileReleaseKotlin
+> Task :app:stripStandardReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libsurface_util_jni.so.
+
+> Task :app:extractStandardReleaseNativeSymbolTables
+> Task :app:mergeStandardReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeStandardReleaseArtProfile
+> Task :app:mergeStandardReleaseShaders
+> Task :app:compileStandardReleaseShaders NO-SOURCE
+> Task :app:generateStandardReleaseAssets UP-TO-DATE
+> Task :app:mergeExtDexStandardRelease
+> Task :app:mergeStandardReleaseAssets
+> Task :app:compressStandardReleaseAssets
+> Task :app:extractStandardReleaseVersionControlInfo
+> Task :app:collectStandardReleaseDependencies
+> Task :app:sdkStandardReleaseDependencyData
+> Task :app:validateSigningStandardRelease
+> Task :app:writeStandardReleaseAppMetadata
+> Task :app:writeStandardReleaseSigningConfigVersions
+> Task :app:optimizeStandardReleaseResources
+
+> Task :app:compileStandardReleaseKotlin
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:213:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:214:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:109:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:110:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
-w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2160:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2172:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:138:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:139:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:335:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
-> Task :app:compileReleaseJavaWithJavac NO-SOURCE
-> Task :app:processReleaseJavaRes
-> Task :app:bundleReleaseClassesToRuntimeJar
-> Task :app:bundleReleaseClassesToCompileJar
-> Task :app:dexBuilderRelease
-> Task :app:mergeReleaseGlobalSynthetics
-> Task :app:mergeReleaseJavaResource
-> Task :app:compileReleaseUnitTestKotlin
-> Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
-> Task :app:processReleaseUnitTestJavaRes
-> Task :app:testReleaseUnitTest
-> Task :app:mergeDexRelease
-> Task :app:compileReleaseArtProfile
-> Task :app:packageRelease
-> Task :app:createReleaseApkListingFileRedirect
-> Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1793197907584.json
+> Task :app:compileSandkasseReleaseKotlin
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:213:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:214:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:109:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/GuideActivity.kt:110:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/MainActivity.kt:2172:54 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:138:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/ScanActivity.kt:139:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:335:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
-BUILD SUCCESSFUL in 41s
-49 actionable tasks: 49 executed
+> Task :app:compileStandardReleaseJavaWithJavac
+> Task :app:bundleStandardReleaseClassesToCompileJar
+> Task :app:bundleStandardReleaseClassesToRuntimeJar
+> Task :app:processStandardReleaseJavaRes
+> Task :app:compileSandkasseReleaseJavaWithJavac
+> Task :app:compileStandardReleaseUnitTestKotlin
+> Task :app:dexBuilderSandkasseRelease
+> Task :app:compileStandardReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processStandardReleaseUnitTestJavaRes
+> Task :app:testStandardReleaseUnitTest
+> Task :app:mergeSandkasseReleaseGlobalSynthetics
+> Task :app:processSandkasseReleaseJavaRes
+> Task :app:mergeSandkasseReleaseJavaResource
+> Task :app:dexBuilderStandardRelease
+> Task :app:mergeStandardReleaseGlobalSynthetics
+> Task :app:mergeStandardReleaseJavaResource
+> Task :app:mergeDexSandkasseRelease
+> Task :app:compileSandkasseReleaseArtProfile
+> Task :app:mergeDexStandardRelease
+> Task :app:compileStandardReleaseArtProfile
+> Task :app:packageSandkasseRelease
+> Task :app:createSandkasseReleaseApkListingFileRedirect
+> Task :app:assembleSandkasseRelease
+> Task :app:packageStandardRelease
+> Task :app:createStandardReleaseApkListingFileRedirect
+> Task :app:assembleStandardRelease
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1794839927984.json
+
+BUILD SUCCESSFUL in 2m 53s
+95 actionable tasks: 95 executed
