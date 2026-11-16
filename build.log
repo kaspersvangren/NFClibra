@@ -1,13 +1,3 @@
-
-Welcome to Gradle 8.10.2!
-
-Here are the highlights of this release:
- - Support for Java 23
- - Faster configuration cache
- - Better configuration cache reports
-
-For more details see https://docs.gradle.org/8.10.2/release-notes.html
-
 To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
 Daemon will be stopped at the end of the build 
 > Task :app:buildKotlinToolingMetadata
@@ -26,54 +16,53 @@ Daemon will be stopped at the end of the build
 > Task :app:parseStandardReleaseLocalResources
 > Task :app:processStandardReleaseMainManifest
 > Task :app:processStandardReleaseManifest
-> Task :app:preStandardReleaseUnitTestBuild UP-TO-DATE
 > Task :app:javaPreCompileStandardRelease
+> Task :app:processStandardReleaseManifestForPackage
+> Task :app:preStandardReleaseUnitTestBuild UP-TO-DATE
 > Task :app:preSandkasseReleaseBuild UP-TO-DATE
 > Task :app:javaPreCompileStandardReleaseUnitTest
 > Task :app:mergeSandkasseReleaseJniLibFolders
 > Task :app:mergeSandkasseReleaseNativeLibs
-> Task :app:processStandardReleaseManifestForPackage
+> Task :app:generateSandkasseReleaseBuildConfig
 > Task :app:checkSandkasseReleaseDuplicateClasses
+> Task :app:generateSandkasseReleaseResValues
+> Task :app:checkSandkasseReleaseAarMetadata
+> Task :app:processStandardReleaseResources
 
 > Task :app:stripSandkasseReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libsurface_util_jni.so.
 
-> Task :app:generateSandkasseReleaseBuildConfig
-> Task :app:extractSandkasseReleaseNativeSymbolTables
-> Task :app:checkSandkasseReleaseAarMetadata
-> Task :app:generateSandkasseReleaseResValues
-> Task :app:mergeSandkasseReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:mapSandkasseReleaseSourceSetPaths
 > Task :app:generateSandkasseReleaseResources
-> Task :app:processStandardReleaseResources
-> Task :app:mergeSandkasseReleaseResources
+> Task :app:extractSandkasseReleaseNativeSymbolTables
+> Task :app:mergeSandkasseReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:packageSandkasseReleaseResources
 > Task :app:createSandkasseReleaseCompatibleScreenManifests
-> Task :app:extractDeepLinksSandkasseRelease
 > Task :app:parseSandkasseReleaseLocalResources
+> Task :app:extractDeepLinksSandkasseRelease
+> Task :app:mergeSandkasseReleaseResources
 > Task :app:processSandkasseReleaseMainManifest
 > Task :app:processSandkasseReleaseManifest
-> Task :app:javaPreCompileSandkasseRelease
 > Task :app:processSandkasseReleaseManifestForPackage
+> Task :app:javaPreCompileSandkasseRelease
 > Task :app:desugarSandkasseReleaseFileDependencies
 > Task :app:mergeSandkasseReleaseStartupProfile
-> Task :app:compileStandardReleaseKotlin
-> Task :app:processSandkasseReleaseResources
-> Task :app:mergeExtDexSandkasseRelease
 > Task :app:mergeSandkasseReleaseArtProfile
+> Task :app:processSandkasseReleaseResources
 > Task :app:mergeSandkasseReleaseShaders
 > Task :app:compileSandkasseReleaseShaders NO-SOURCE
 > Task :app:generateSandkasseReleaseAssets UP-TO-DATE
 > Task :app:mergeSandkasseReleaseAssets
 > Task :app:compressSandkasseReleaseAssets
+> Task :app:mergeExtDexSandkasseRelease
 > Task :app:extractSandkasseReleaseVersionControlInfo
 > Task :app:collectSandkasseReleaseDependencies
 > Task :app:sdkSandkasseReleaseDependencyData
 > Task :app:validateSigningSandkasseRelease
 > Task :app:writeSandkasseReleaseAppMetadata
 > Task :app:writeSandkasseReleaseSigningConfigVersions
-> Task :app:optimizeSandkasseReleaseResources
 > Task :app:mergeStandardReleaseJniLibFolders
+> Task :app:optimizeSandkasseReleaseResources
 > Task :app:mergeStandardReleaseNativeLibs
 > Task :app:checkStandardReleaseDuplicateClasses
 > Task :app:desugarStandardReleaseFileDependencies
@@ -85,10 +74,10 @@ Unable to strip the following libraries, packaging them as they are: libimage_pr
 > Task :app:extractStandardReleaseNativeSymbolTables
 > Task :app:mergeStandardReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:mergeStandardReleaseArtProfile
+> Task :app:mergeExtDexStandardRelease
 > Task :app:mergeStandardReleaseShaders
 > Task :app:compileStandardReleaseShaders NO-SOURCE
 > Task :app:generateStandardReleaseAssets UP-TO-DATE
-> Task :app:mergeExtDexStandardRelease
 > Task :app:mergeStandardReleaseAssets
 > Task :app:compressStandardReleaseAssets
 > Task :app:extractStandardReleaseVersionControlInfo
@@ -98,7 +87,6 @@ Unable to strip the following libraries, packaging them as they are: libimage_pr
 > Task :app:writeStandardReleaseAppMetadata
 > Task :app:writeStandardReleaseSigningConfigVersions
 > Task :app:optimizeStandardReleaseResources
-
 > Task :app:compileStandardReleaseKotlin
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:213:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/CqlScanActivity.kt:214:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
@@ -121,11 +109,11 @@ w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/cicero
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:335:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
 w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/ciceronfc/TagToolActivity.kt:336:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
 
-> Task :app:compileStandardReleaseJavaWithJavac
-> Task :app:bundleStandardReleaseClassesToCompileJar
-> Task :app:bundleStandardReleaseClassesToRuntimeJar
-> Task :app:processStandardReleaseJavaRes
 > Task :app:compileSandkasseReleaseJavaWithJavac
+> Task :app:compileStandardReleaseJavaWithJavac
+> Task :app:bundleStandardReleaseClassesToRuntimeJar
+> Task :app:bundleStandardReleaseClassesToCompileJar
+> Task :app:processStandardReleaseJavaRes
 > Task :app:compileStandardReleaseUnitTestKotlin
 > Task :app:dexBuilderSandkasseRelease
 > Task :app:compileStandardReleaseUnitTestJavaWithJavac NO-SOURCE
@@ -136,19 +124,19 @@ w: file:///home/runner/work/NFClibra/NFClibra/app/src/main/java/dk/kasvan/cicero
 > Task :app:mergeSandkasseReleaseJavaResource
 > Task :app:dexBuilderStandardRelease
 > Task :app:mergeStandardReleaseGlobalSynthetics
-> Task :app:mergeStandardReleaseJavaResource
 > Task :app:mergeDexSandkasseRelease
+> Task :app:mergeStandardReleaseJavaResource
 > Task :app:compileSandkasseReleaseArtProfile
-> Task :app:mergeDexStandardRelease
-> Task :app:compileStandardReleaseArtProfile
 > Task :app:packageSandkasseRelease
 > Task :app:createSandkasseReleaseApkListingFileRedirect
 > Task :app:assembleSandkasseRelease
+> Task :app:mergeDexStandardRelease
+> Task :app:compileStandardReleaseArtProfile
 > Task :app:packageStandardRelease
 > Task :app:createStandardReleaseApkListingFileRedirect
 > Task :app:assembleStandardRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1794839927984.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1794859345701.json
 
-BUILD SUCCESSFUL in 2m 53s
+BUILD SUCCESSFUL in 1m 6s
 95 actionable tasks: 95 executed
