@@ -79,7 +79,7 @@ object Updater {
                     ?: Regex("""^v\d+\.\d+\.(\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
                     ?: throw IOException("ukendt versionsnummer $tag")
                 // GitHub skelner ikke mellem store og små bogstaver i projektnavnet
-                if (DOWNLOAD_PREFIXES.none { u.startsWith(it, ignoreCase = true) } || APK_NAMES.none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
+                if (DOWNLOAD_PREFIXES.none { u.startsWith(it, ignoreCase = true) } || (if (Env.SANDBOX) setOf(Env.APK_NAME) else APK_NAMES).none { u.endsWith("/$it") }) throw IOException("ingen app-fil i udgivelsen")
                 // Kort ændringsliste fra udgivelsen (uden byggelinjen), højst 600 tegn
                 val notes = rawNotes.lines()
                     .filterNot { it.startsWith("Bygget fra") || it.startsWith("Byggenummer") }

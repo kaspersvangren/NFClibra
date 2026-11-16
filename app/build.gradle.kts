@@ -38,6 +38,7 @@ android {
             dimension = "miljoe"
             buildConfigField("boolean", "SANDBOX", "false")
             buildConfigField("String", "CICERO_HOST", "\"cicero.systematic.com\"")
+            buildConfigField("String", "LOGIN_HOST", "\"auth.cicero.systematic.com\"")
             buildConfigField("String", "DOMAINS", "\"systematic.com\"")
             buildConfigField("int", "RFID_PORT", "1667")
             buildConfigField("String", "APK_NAME", "\"NFClibra.apk\"")
@@ -48,6 +49,7 @@ android {
             applicationIdSuffix = ".sandkasse"
             buildConfigField("boolean", "SANDBOX", "true")
             buildConfigField("String", "CICERO_HOST", "\"cloud-education.nonprod.cicero-lms.com\"")
+            buildConfigField("String", "LOGIN_HOST", "\"authentication-education.nonprod.cicero-lms.com\"")
             // Hjælp og andre links kan stadig pege på systematic.com
             buildConfigField("String", "DOMAINS", "\"cicero-lms.com,systematic.com\"")
             buildConfigField("int", "RFID_PORT", "1668")

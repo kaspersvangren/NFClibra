@@ -9,7 +9,7 @@ object Env {
     /** Ciceros adresse */
     val CICERO_HOST: String = BuildConfig.CICERO_HOST
     /** Ciceros login-side (Keycloak) */
-    val LOGIN_HOST: String = "auth.$CICERO_HOST"
+    val LOGIN_HOST: String = BuildConfig.LOGIN_HOST
     val START_URL: String = "https://$CICERO_HOST/"
     /** Domæner, hvis sider åbnes inde i app'en (Cicero, login, hjælp) */
     val DOMAINS: List<String> = BuildConfig.DOMAINS.split(',').map { it.trim() }.filter { it.isNotEmpty() }
